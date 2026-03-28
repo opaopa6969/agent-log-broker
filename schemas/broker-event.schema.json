@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://askos.dev/schemas/broker-event.schema.json",
+  "title": "BrokerEvent",
+  "description": "Agent Log Broker event envelope - delivered to consumers",
+  "type": "object",
+  "required": ["_broker", "_session", "type"],
+  "properties": {
+    "_broker": {
+      "type": "object",
+      "required": ["version", "messageId", "deliveredAt", "deliveryAttempt"],
+      "properties": {
+        "version": { "type": "string", "const": "1.0" },
+        "messageId": { "type": "string" },
+        "deliveredAt": { "type": "string", "format": "date-time" },
+        "deliveryAttempt": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "_session": {
+      "type": "object",
+      "required": ["sessionId", "sessionPath", "projectPath", "agentType"],
+      "properties": {
+        "sessionId": { "type": "string" },
+        "sessionPath": { "type": "string" },
+        "projectPath": { "type": "string" },
+        "agentType": { "type": "string" }
+      }
+    },
+    "_index": {
+      "type": "object",
+      "properties": {
+        "messageIndex": { "type": "integer", "minimum": 0 },
+        "byteOffset": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "type": {
+      "type": "string",
+      "enum": ["message", "session.discovered", "session.idle", "session.lost"]
+    },
+    "message": {
+      "type": "object",
+      "properties": {
+        "role": { "type": "string", "enum": ["user", "assistant", "system"] },
+        "text": { "type": "string" },
+        "toolUses": { "type": "array" },
+        "toolResults": { "type": "array" },
+        "thinking": { "type": "array", "items": { "type": "string" } },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    },
+    "securityFlags": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "severity", "detail"],
+        "properties": {
+          "type": { "type": "string" },
+          "severity": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
+          "detail": { "type": "string" },
+          "field": { "type": "string" }
+        }
+      }
+    },
+    "bannedWordHits": { "type": "array" }
+  }
+}
