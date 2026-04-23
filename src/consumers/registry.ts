@@ -1,60 +1,97 @@
 /**
  * Consumer Registry
  *
- * Manages registered consumers and their health state.
+ * Manages registered consumers and their health state via tramli state machine.
  * One consumer's failure must not affect others (BRK-DLQ-PER-CONSUMER).
  */
 
-import type { Consumer, ConsumerStatus } from "./types.js";
+import { InMemoryFlowStore, type FlowEngine, type FlowInstance, type FlowDefinition } from "@unlaxer/tramli";
+import type { Consumer, ConsumerState } from "./types.js";
+import {
+  buildConsumerLifecycle,
+  createLifecycleEngine,
+  DELIVERY_SUCCESS,
+  ERROR_COUNT,
+  MESSAGES_DELIVERED,
+  LAST_DELIVERY,
+  type LifecycleConfig,
+} from "./lifecycle.js";
+
+interface ConsumerEntry {
+  id: string;
+  callbackUrl: string;
+  flowId: string;
+  flow: FlowInstance<ConsumerState>;
+}
 
 export class ConsumerRegistry {
-  private consumers = new Map<string, Consumer>();
+  private entries = new Map<string, ConsumerEntry>();
+  private store: InMemoryFlowStore;
+  private engine: FlowEngine;
+  private definition: FlowDefinition<ConsumerState>;
 
-  register(id: string, callbackUrl: string): Consumer {
-    const consumer: Consumer = {
+  constructor(config?: Partial<LifecycleConfig>) {
+    this.store = new InMemoryFlowStore();
+    this.engine = createLifecycleEngine(this.store);
+    this.definition = buildConsumerLifecycle(config);
+  }
+
+  async register(id: string, callbackUrl: string): Promise<Consumer> {
+    const flow = await this.engine.startFlow(
+      this.definition,
       id,
-      callbackUrl,
-      status: "unknown",
-      messagesDelivered: 0,
-      lastDelivery: null,
-      errors: 0,
-    };
-    this.consumers.set(id, consumer);
-    return consumer;
+      new Map(),
+    );
+    this.entries.set(id, { id, callbackUrl, flowId: flow.id, flow });
+    return this.toConsumer(id);
   }
 
   unregister(id: string): boolean {
-    return this.consumers.delete(id);
+    return this.entries.delete(id);
   }
 
   get(id: string): Consumer | undefined {
-    return this.consumers.get(id);
+    if (!this.entries.has(id)) return undefined;
+    return this.toConsumer(id);
   }
 
   list(): readonly Consumer[] {
-    return [...this.consumers.values()];
+    return [...this.entries.keys()].map((id) => this.toConsumer(id));
   }
 
-  updateStatus(id: string, status: ConsumerStatus): void {
-    const consumer = this.consumers.get(id);
-    if (consumer) {
-      consumer.status = status;
-    }
+  async recordDelivery(id: string, success: boolean): Promise<void> {
+    const entry = this.entries.get(id);
+    if (!entry) return;
+    if (entry.flow.isCompleted) return;
+
+    const externalData = new Map<string, unknown>([
+      [DELIVERY_SUCCESS as string, success],
+    ]);
+    await this.engine.resumeAndExecute(entry.flowId, this.definition, externalData);
   }
 
-  recordDelivery(id: string, success: boolean): void {
-    const consumer = this.consumers.get(id);
-    if (!consumer) return;
+  async remove(id: string): Promise<void> {
+    const entry = this.entries.get(id);
+    if (!entry) return;
+    if (entry.flow.currentState !== "DEAD") return;
 
-    if (success) {
-      consumer.messagesDelivered++;
-      consumer.lastDelivery = new Date().toISOString();
-      consumer.status = "healthy";
-    } else {
-      consumer.errors++;
-      if (consumer.errors >= 3) {
-        consumer.status = "unhealthy";
-      }
-    }
+    await this.engine.resumeAndExecute(entry.flowId, this.definition);
+  }
+
+  getState(id: string): ConsumerState | undefined {
+    return this.entries.get(id)?.flow.currentState;
+  }
+
+  private toConsumer(id: string): Consumer {
+    const entry = this.entries.get(id)!;
+    const ctx = entry.flow.context;
+    return {
+      id: entry.id,
+      callbackUrl: entry.callbackUrl,
+      status: entry.flow.currentState,
+      messagesDelivered: ctx.find(MESSAGES_DELIVERED) ?? 0,
+      lastDelivery: ctx.find(LAST_DELIVERY) ?? null,
+      errors: ctx.find(ERROR_COUNT) ?? 0,
+    };
   }
 }

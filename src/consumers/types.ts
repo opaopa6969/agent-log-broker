@@ -10,12 +10,25 @@
  *   Timeout: 5 seconds (configurable)
  */
 
-export type ConsumerStatus = "healthy" | "unhealthy" | "unknown";
+/**
+ * Consumer lifecycle states managed by tramli state machine.
+ *
+ * INITIALIZING → HEALTHY → UNHEALTHY → DEAD → REMOVED
+ *
+ * ASSESSING is an internal transient state used for branch evaluation.
+ */
+export type ConsumerState =
+  | "INITIALIZING"
+  | "HEALTHY"
+  | "ASSESSING"
+  | "UNHEALTHY"
+  | "DEAD"
+  | "REMOVED";
 
 export interface Consumer {
   id: string;
   callbackUrl: string;
-  status: ConsumerStatus;
+  status: ConsumerState;
   messagesDelivered: number;
   lastDelivery: string | null;
   errors: number;
