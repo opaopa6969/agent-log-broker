@@ -77,6 +77,48 @@ agent-log-broker が行わないこと:
                 └──→ Dashboard        (filtered: メタデータのみ)
 ```
 
+```mermaid
+graph TB
+    subgraph Agents["エージェント層"]
+        A1[Claude Code]
+        A2[Codex]
+        A3[Gemini ...]
+    end
+
+    subgraph Files["ログファイル層"]
+        F1["~/.claude/projects/\n{hash}/sessions/{id}/log.jsonl"]
+    end
+
+    subgraph Broker["agent-log-broker"]
+        FW["FileWatcher\ndiscoverSessions()\nwatchSession()\nreadNewLines()"]
+        RP["RedactionPipeline\nPII リダクション\nセキュリティフラグ"]
+        SM["SubscriptionManager\nmatches()\nfull_stream / filtered / trigger"]
+        BC["BrokerCore\ndistribute()\nPromise.allSettled"]
+        CR["ConsumerRegistry\nregister() / remove()\nrecordDelivery()"]
+    end
+
+    subgraph Consumers["コンシューマ層"]
+        C1["AskOS\nfiltered"]
+        C2["session-replay\nfull_stream"]
+        C3["Slack webhook\ntrigger"]
+        C4["Dashboard\nfiltered"]
+    end
+
+    A1 -->|JSONL| F1
+    A2 -->|JSONL| F1
+    A3 -->|JSONL| F1
+    F1 -->|fs.watch| FW
+    FW -->|生行| RP
+    RP -->|BrokerEvent| SM
+    SM -->|マッチ済みイベント| BC
+    BC -->|HTTP POST| C1
+    BC -->|HTTP POST| C2
+    BC -->|HTTP POST| C3
+    BC -->|HTTP POST| C4
+    BC -->|DeliveryResult| CR
+    CR -.->|ConsumerState| BC
+```
+
 ### 1.4 エージェント非依存原則 (BRK-AGENT-AGNOSTIC)
 
 ブローカーはエージェント側への変更を一切必要としない。ログファイルを外部から読み取るだけである。  
@@ -244,6 +286,46 @@ interface Subscription {
 
 **現在の実装 (Phase 1)**: HTTP POST スタブ。常に `{ success: true }` を返す。  
 **Phase 1 実装予定**: 実際の HTTP POST 配信。タイムアウト・リトライ付き。
+
+```mermaid
+sequenceDiagram
+    participant BC as BrokerCore
+    participant DTC as deliverToConsumer
+    participant HTTP as HTTP Client
+    participant CB as Consumer callbackUrl
+    participant CR as ConsumerRegistry
+
+    BC->>DTC: deliverToConsumer(event, consumer)
+    DTC->>DTC: attempt = 1
+
+    loop リトライループ (attempt <= maxRetries)
+        DTC->>HTTP: POST callbackUrl\nContent-Type: application/json\nbody: BrokerEvent
+        HTTP->>CB: HTTP POST (timeout: deliveryTimeoutMs)
+
+        alt 2xx Success
+            CB-->>HTTP: 200 OK
+            HTTP-->>DTC: success
+            DTC->>CR: recordDelivery(consumerId, true)
+            DTC-->>BC: DeliveryResult { success: true }
+        else 4xx Permanent Error
+            CB-->>HTTP: 4xx
+            HTTP-->>DTC: permanent error
+            DTC->>CR: recordDelivery(consumerId, false)
+            DTC-->>BC: DeliveryResult { success: false }
+            note over DTC: リトライしない
+        else 5xx / Timeout
+            CB-->>HTTP: 5xx or timeout
+            HTTP-->>DTC: transient error
+            DTC->>DTC: attempt++\nexponential backoff\n(retryBackoffMs * 2^attempt)
+            note over DTC: attempt > maxRetries なら DLQ へ
+        end
+    end
+
+    alt maxRetries 超過
+        DTC->>CR: recordDelivery(consumerId, false)
+        DTC-->>BC: DeliveryResult { success: false, dlq: true }
+    end
+```
 
 レスポンスコード処理 (Phase 1 実装時):
 
@@ -574,6 +656,39 @@ const LAST_DELIVERY    = flowKey<string | null>("lastDelivery"); // プロセッ
 ## 5. ビジネスロジック — Business Logic
 
 ### 5.1 サブスクリプションモードとフィルタリング
+
+```mermaid
+flowchart TD
+    START([BrokerEvent 受信]) --> CHECK_MODE{subscription.mode}
+
+    CHECK_MODE -->|full_stream| FULL_MATCH[matches = true\n全イベントを配信]
+
+    CHECK_MODE -->|trigger| TRIGGER_STUB{matchesTrigger\nPhase 1: スタブ}
+    TRIGGER_STUB -->|常に false| TRIGGER_NO[matches = false\nスキップ]
+    TRIGGER_STUB -->|true\nPhase 2+| TRIGGER_YES[matches = true\n発火]
+
+    CHECK_MODE -->|filtered| F1{filter.projectPath\n指定あり?}
+    F1 -->|No| F2{filter.agentTypes\n指定あり?}
+    F1 -->|Yes| F1_CHECK{event._session.projectPath\n== filter.projectPath?}
+    F1_CHECK -->|No| FILTERED_NO[matches = false\nスキップ]
+    F1_CHECK -->|Yes| F2
+
+    F2 -->|No| F3{filter.includeRoles\n指定あり?}
+    F2 -->|Yes| F2_CHECK{event._session.agentType\nin filter.agentTypes?}
+    F2_CHECK -->|No| FILTERED_NO
+    F2_CHECK -->|Yes| F3
+
+    F3 -->|No| FILTERED_YES[matches = true\n配信]
+    F3 -->|Yes| F3_CHECK{event.message.role\nin filter.includeRoles?}
+    F3_CHECK -->|No| FILTERED_NO
+    F3_CHECK -->|Yes| FILTERED_YES
+
+    FULL_MATCH --> DELIVER([deliverToConsumer])
+    FILTERED_YES --> DELIVER
+    TRIGGER_YES --> DELIVER
+    FILTERED_NO --> SKIP([スキップ])
+    TRIGGER_NO --> SKIP
+```
 
 #### 5.1.1 full_stream モード
 
