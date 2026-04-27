@@ -58,25 +58,6 @@ agent-log-broker が行わないこと:
 
 ### 1.3 エコシステムにおける位置づけ
 
-```
-エージェント (Claude Code, Codex, Gemini, ...)
-  │
-  │  JSONL ログファイル出力
-  ▼
-┌──────────────────────────────────────┐
-│         agent-log-broker             │
-│                                      │
-│  Discover → Watch → Parse            │
-│  → Redact → Flag                     │
-│  → Distribute                        │
-└───────────────┬──────────────────────┘
-                │ fan-out (HTTP POST)
-                ├──→ AskOS            (filtered: 進捗 + 異常のみ)
-                ├──→ session-replay   (full_stream: 全メッセージ)
-                ├──→ Slack webhook    (trigger: セキュリティアラートのみ)
-                └──→ Dashboard        (filtered: メタデータのみ)
-```
-
 ```mermaid
 graph TB
     subgraph Agents["エージェント層"]
@@ -86,22 +67,22 @@ graph TB
     end
 
     subgraph Files["ログファイル層"]
-        F1["~/.claude/projects/\n{hash}/sessions/{id}/log.jsonl"]
+        F1["~/.claude/projects/<br/>{hash}/sessions/{id}/log.jsonl"]
     end
 
     subgraph Broker["agent-log-broker"]
-        FW["FileWatcher\ndiscoverSessions()\nwatchSession()\nreadNewLines()"]
-        RP["RedactionPipeline\nPII リダクション\nセキュリティフラグ"]
-        SM["SubscriptionManager\nmatches()\nfull_stream / filtered / trigger"]
-        BC["BrokerCore\ndistribute()\nPromise.allSettled"]
-        CR["ConsumerRegistry\nregister() / remove()\nrecordDelivery()"]
+        FW["FileWatcher<br/>discoverSessions()<br/>watchSession()<br/>readNewLines()"]
+        RP["RedactionPipeline<br/>PII リダクション<br/>セキュリティフラグ"]
+        SM["SubscriptionManager<br/>matches()<br/>full_stream / filtered / trigger"]
+        BC["BrokerCore<br/>distribute()<br/>Promise.allSettled"]
+        CR["ConsumerRegistry<br/>register() / remove()<br/>recordDelivery()"]
     end
 
     subgraph Consumers["コンシューマ層"]
-        C1["AskOS\nfiltered"]
-        C2["session-replay\nfull_stream"]
-        C3["Slack webhook\ntrigger"]
-        C4["Dashboard\nfiltered"]
+        C1["AskOS<br/>filtered"]
+        C2["session-replay<br/>full_stream"]
+        C3["Slack webhook<br/>trigger"]
+        C4["Dashboard<br/>filtered"]
     end
 
     A1 -->|JSONL| F1
@@ -299,7 +280,7 @@ sequenceDiagram
     DTC->>DTC: attempt = 1
 
     loop リトライループ (attempt <= maxRetries)
-        DTC->>HTTP: POST callbackUrl\nContent-Type: application/json\nbody: BrokerEvent
+        DTC->>HTTP: POST callbackUrl<br/>Content-Type: application/json<br/>body: BrokerEvent
         HTTP->>CB: HTTP POST (timeout: deliveryTimeoutMs)
 
         alt 2xx Success
@@ -316,7 +297,7 @@ sequenceDiagram
         else 5xx / Timeout
             CB-->>HTTP: 5xx or timeout
             HTTP-->>DTC: transient error
-            DTC->>DTC: attempt++\nexponential backoff\n(retryBackoffMs * 2^attempt)
+            DTC->>DTC: attempt++<br/>exponential backoff<br/>(retryBackoffMs * 2^attempt)
             note over DTC: attempt > maxRetries なら DLQ へ
         end
     end
@@ -545,26 +526,6 @@ type ConsumerState =
 
 ### 4.3 遷移図
 
-```
-INITIALIZING ──auto──────────────────────────────────────────> HEALTHY
-                                                                    │
-HEALTHY      ──external(recordDelivery)──> ASSESSING ──────────────┤
-                                               branch               │
-UNHEALTHY    ──external(recordDelivery)──> ASSESSING ──────────────┤
-                                                           ┌────────┴────────┐
-                                                           ▼                 ▼
-                                                       HEALTHY           UNHEALTHY
-                                                                              │
-                                                         DEAD ◄──────────────┘
-                                                          ▲
-                                                          │ onAnyError (任意の状態から)
-                                                          │
-                                                       REMOVED (終端)
-                                             DEAD ──external(remove)──> REMOVED
-```
-
-Mermaid 形式:
-
 ```mermaid
 stateDiagram-v2
   [*] --> INITIALIZING
@@ -661,25 +622,25 @@ const LAST_DELIVERY    = flowKey<string | null>("lastDelivery"); // プロセッ
 flowchart TD
     START([BrokerEvent 受信]) --> CHECK_MODE{subscription.mode}
 
-    CHECK_MODE -->|full_stream| FULL_MATCH[matches = true\n全イベントを配信]
+    CHECK_MODE -->|full_stream| FULL_MATCH[matches = true<br/>全イベントを配信]
 
-    CHECK_MODE -->|trigger| TRIGGER_STUB{matchesTrigger\nPhase 1: スタブ}
-    TRIGGER_STUB -->|常に false| TRIGGER_NO[matches = false\nスキップ]
-    TRIGGER_STUB -->|true\nPhase 2+| TRIGGER_YES[matches = true\n発火]
+    CHECK_MODE -->|trigger| TRIGGER_STUB{matchesTrigger<br/>Phase 1: スタブ}
+    TRIGGER_STUB -->|常に false| TRIGGER_NO[matches = false<br/>スキップ]
+    TRIGGER_STUB -->|true<br/>Phase 2+| TRIGGER_YES[matches = true<br/>発火]
 
-    CHECK_MODE -->|filtered| F1{filter.projectPath\n指定あり?}
-    F1 -->|No| F2{filter.agentTypes\n指定あり?}
-    F1 -->|Yes| F1_CHECK{event._session.projectPath\n== filter.projectPath?}
-    F1_CHECK -->|No| FILTERED_NO[matches = false\nスキップ]
+    CHECK_MODE -->|filtered| F1{filter.projectPath<br/>指定あり?}
+    F1 -->|No| F2{filter.agentTypes<br/>指定あり?}
+    F1 -->|Yes| F1_CHECK{event._session.projectPath<br/>== filter.projectPath?}
+    F1_CHECK -->|No| FILTERED_NO[matches = false<br/>スキップ]
     F1_CHECK -->|Yes| F2
 
-    F2 -->|No| F3{filter.includeRoles\n指定あり?}
-    F2 -->|Yes| F2_CHECK{event._session.agentType\nin filter.agentTypes?}
+    F2 -->|No| F3{filter.includeRoles<br/>指定あり?}
+    F2 -->|Yes| F2_CHECK{event._session.agentType<br/>in filter.agentTypes?}
     F2_CHECK -->|No| FILTERED_NO
     F2_CHECK -->|Yes| F3
 
-    F3 -->|No| FILTERED_YES[matches = true\n配信]
-    F3 -->|Yes| F3_CHECK{event.message.role\nin filter.includeRoles?}
+    F3 -->|No| FILTERED_YES[matches = true<br/>配信]
+    F3 -->|Yes| F3_CHECK{event.message.role<br/>in filter.includeRoles?}
     F3_CHECK -->|No| FILTERED_NO
     F3_CHECK -->|Yes| FILTERED_YES
 
@@ -754,27 +715,18 @@ interface TriggerCondition {
 
 #### 5.2.1 イベント生成フロー
 
-```
-JSONL 生行 (文字列)
-    │
-    ▼ JSON.parse()
-生ログオブジェクト
-    │
-    ▼ アダプター変換 (AgentMessage への正規化)
-AgentMessage
-    │
-    ▼ RedactionPipeline.process()
-リダクション済みテキスト + SecurityFlag[]
-    │
-    ▼ BrokerEvent 構築
-{
-  _broker: { version, messageId: uuid(), deliveredAt: now, deliveryAttempt: 1 },
-  _session: { sessionId, sessionPath, projectPath, agentType },
-  _index: { messageIndex, byteOffset },
-  type: "message",
-  message: { role, text: redactedText, toolUses, ... },
-  securityFlags: [...],
-}
+```mermaid
+flowchart TD
+    RAW["JSONL 生行 (文字列)"]
+    PARSED["生ログオブジェクト"]
+    AGENT["AgentMessage"]
+    REDACTED["リダクション済みテキスト + SecurityFlag[]"]
+    EVENT["BrokerEvent<br/>_broker: &#123; version, messageId: uuid(), deliveredAt: now, deliveryAttempt: 1 &#125;<br/>_session: &#123; sessionId, sessionPath, projectPath, agentType &#125;<br/>_index: &#123; messageIndex, byteOffset &#125;<br/>type: message<br/>message: &#123; role, text: redactedText, toolUses, ... &#125;<br/>securityFlags: [...]"]
+
+    RAW -->|"JSON.parse()"| PARSED
+    PARSED -->|"アダプター変換 (AgentMessage への正規化)"| AGENT
+    AGENT -->|"RedactionPipeline.process()"| REDACTED
+    REDACTED -->|"BrokerEvent 構築"| EVENT
 ```
 
 #### 5.2.2 イベントタイプ
