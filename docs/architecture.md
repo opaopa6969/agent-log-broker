@@ -61,34 +61,30 @@ schemas/
 
 ## Data flow
 
-```
-[JSONL file on disk]
-        │
-        ▼ fs.watch triggers readNewLines()
-  FileWatcher
-        │  new line at byte offset N
-        ▼
-  parse raw JSON → AgentMessage
-        │
-        ▼
-  RedactionPipeline.process()
-        │  PII masking + security flags
-        ▼
-  BrokerEvent constructed
-  { _broker, _session, _index, type, message, securityFlags }
-        │
-        ▼
-  SubscriptionManager.matches(event, subscription)
-        │  evaluated per registered consumer
-        ▼
-  BrokerCore.distribute(event, matchingConsumers)
-        │  Promise.allSettled — one failure does not block others
-        ▼
-  deliverToConsumer(event, consumer)   ← HTTP POST stub (Phase 1)
-        │
-        ├── 2xx  → ConsumerRegistry.recordDelivery(id, true)
-        ├── 5xx  → retry (maxRetries=3) → DLQ (Phase 2)
-        └── 4xx  → permanent error → skip
+```mermaid
+flowchart TD
+    JSONL["JSONL file on disk"]
+    FW["FileWatcher"]
+    Parse["parse raw JSON → AgentMessage"]
+    Redact["RedactionPipeline.process()<br/>PII masking + security flags"]
+    Event["BrokerEvent constructed<br/>{ _broker, _session, _index,<br/>type, message, securityFlags }"]
+    Match["SubscriptionManager.matches(event, subscription)<br/>evaluated per registered consumer"]
+    Distribute["BrokerCore.distribute(event, matchingConsumers)<br/>Promise.allSettled — one failure does not block others"]
+    Deliver["deliverToConsumer(event, consumer)<br/>HTTP POST stub (Phase 1)"]
+    OK["2xx → ConsumerRegistry.recordDelivery(id, true)"]
+    Retry["5xx → retry (maxRetries=3) → DLQ (Phase 2)"]
+    Perm["4xx → permanent error → skip"]
+
+    JSONL -- "fs.watch triggers readNewLines()" --> FW
+    FW -- "new line at byte offset N" --> Parse
+    Parse --> Redact
+    Redact --> Event
+    Event --> Match
+    Match --> Distribute
+    Distribute --> Deliver
+    Deliver --> OK
+    Deliver --> Retry
+    Deliver --> Perm
 ```
 
 ---

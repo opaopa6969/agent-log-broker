@@ -43,23 +43,20 @@ Broker の7つの責務:
 
 ## エコシステムにおける位置づけ
 
-```
-Agent (Claude Code, Codex, Gemini, ...)
-  │
-  │  JSONL ログファイル出力
-  ▼
-┌──────────────────────────────┐
-│      agent-log-broker        │
-│                              │
-│  Discover → Watch → Parse    │
-│  → Redact → Flag             │
-│  → Distribute                │
-└────────────┬─────────────────┘
-             │ fan-out
-             ├──→ AskOS            (filtered: 進捗・異常のみ)
-             ├──→ session-replay   (full_stream: 全メッセージ蓄積・再生)
-             ├──→ Slack webhook    (trigger: セキュリティアラートのみ)
-             └──→ Dashboard        (filtered: メタデータのみ)
+```mermaid
+flowchart TD
+    Agent["Agent<br/>(Claude Code, Codex, Gemini, ...)"]
+    Broker["agent-log-broker<br/>Discover → Watch → Parse<br/>→ Redact → Flag → Distribute"]
+    AskOS["AskOS<br/>filtered: 進捗・異常のみ"]
+    Replay["session-replay<br/>full_stream: 全メッセージ蓄積・再生"]
+    Slack["Slack webhook<br/>trigger: セキュリティアラートのみ"]
+    Dash["Dashboard<br/>filtered: メタデータのみ"]
+
+    Agent -- "JSONL ログファイル出力" --> Broker
+    Broker -- fan-out --> AskOS
+    Broker -- fan-out --> Replay
+    Broker -- fan-out --> Slack
+    Broker -- fan-out --> Dash
 ```
 
 ---
@@ -123,13 +120,20 @@ Agent (Claude Code, Codex, Gemini, ...)
 
 各コンシューマーのヘルス状態は [tramli](https://github.com/opaopa6969/tramli) ステートマシンで管理される:
 
-```
-INITIALIZING ──auto──> HEALTHY
-HEALTHY      ──external(配信結果)──> ASSESSING
-UNHEALTHY    ──external(配信結果)──> ASSESSING
-ASSESSING    ──branch──> HEALTHY | UNHEALTHY | DEAD
-DEAD         ──external(cleanup)──> REMOVED
-任意エラー   ──> DEAD
+```mermaid
+stateDiagram-v2
+    [*] --> INITIALIZING
+    INITIALIZING --> HEALTHY : auto
+    HEALTHY --> ASSESSING : external(配信結果)
+    UNHEALTHY --> ASSESSING : external(配信結果)
+    ASSESSING --> HEALTHY : branch
+    ASSESSING --> UNHEALTHY : branch
+    ASSESSING --> DEAD : branch
+    DEAD --> REMOVED : external(cleanup)
+    HEALTHY --> DEAD : 任意エラー
+    ASSESSING --> DEAD : 任意エラー
+    UNHEALTHY --> DEAD : 任意エラー
+    REMOVED --> [*]
 ```
 
 `ASSESSING` でのブランチロジック:

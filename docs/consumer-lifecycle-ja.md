@@ -8,25 +8,6 @@
 
 ## 状態図
 
-```
-INITIALIZING ──auto──────────────────────────────────> HEALTHY
-                                                           │
-HEALTHY      ──external(配信結果)──> ASSESSING ────────────┤
-                                         branch            │
-UNHEALTHY    ──external(配信結果)──> ASSESSING ─── ────────┤
-                                                           │
-                                                   ┌───────┴───────┐
-                                                   ▼               ▼
-                                               HEALTHY         UNHEALTHY
-                                                                   │
-                                               DEAD ◄──── 任意エラー（onAnyError）
-                                               │
-                                         REMOVED（終端）
-                                   DEAD ──external(cleanup)──>
-```
-
-Mermaid:
-
 ```mermaid
 stateDiagram-v2
   [*] --> INITIALIZING

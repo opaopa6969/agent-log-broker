@@ -43,23 +43,20 @@ The broker's seven responsibilities:
 
 ## Ecosystem position
 
-```
-Agent (Claude Code, Codex, Gemini, ...)
-  │
-  │  JSONL log file output
-  ▼
-┌──────────────────────────────┐
-│      agent-log-broker        │
-│                              │
-│  Discover → Watch → Parse    │
-│  → Redact → Flag             │
-│  → Distribute                │
-└────────────┬─────────────────┘
-             │ fan-out
-             ├──→ AskOS            (filtered: progress + anomalies only)
-             ├──→ session-replay   (full_stream: all messages, accumulate + replay)
-             ├──→ Slack webhook    (trigger: security alerts only)
-             └──→ Dashboard        (filtered: metadata only)
+```mermaid
+flowchart TD
+    Agent["Agent<br/>(Claude Code, Codex, Gemini, ...)"]
+    Broker["agent-log-broker<br/>Discover → Watch → Parse<br/>→ Redact → Flag → Distribute"]
+    AskOS["AskOS<br/>filtered: progress + anomalies only"]
+    Replay["session-replay<br/>full_stream: all messages, accumulate + replay"]
+    Slack["Slack webhook<br/>trigger: security alerts only"]
+    Dash["Dashboard<br/>filtered: metadata only"]
+
+    Agent -- "JSONL log file output" --> Broker
+    Broker -- fan-out --> AskOS
+    Broker -- fan-out --> Replay
+    Broker -- fan-out --> Slack
+    Broker -- fan-out --> Dash
 ```
 
 ---
@@ -123,13 +120,20 @@ Fire only when specific conditions match. Used by Slack webhook.
 
 Each consumer's health is tracked by a [tramli](https://github.com/opaopa6969/tramli) state machine:
 
-```
-INITIALIZING ──auto──> HEALTHY
-HEALTHY      ──external(delivery result)──> ASSESSING
-UNHEALTHY    ──external(delivery result)──> ASSESSING
-ASSESSING    ──branch──> HEALTHY | UNHEALTHY | DEAD
-DEAD         ──external(cleanup)──> REMOVED
-any error    ──> DEAD
+```mermaid
+stateDiagram-v2
+    [*] --> INITIALIZING
+    INITIALIZING --> HEALTHY : auto
+    HEALTHY --> ASSESSING : external(delivery result)
+    UNHEALTHY --> ASSESSING : external(delivery result)
+    ASSESSING --> HEALTHY : branch
+    ASSESSING --> UNHEALTHY : branch
+    ASSESSING --> DEAD : branch
+    DEAD --> REMOVED : external(cleanup)
+    HEALTHY --> DEAD : any error
+    ASSESSING --> DEAD : any error
+    UNHEALTHY --> DEAD : any error
+    REMOVED --> [*]
 ```
 
 Branch logic in `ASSESSING`:

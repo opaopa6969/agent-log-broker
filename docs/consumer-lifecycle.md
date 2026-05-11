@@ -8,25 +8,6 @@ Each registered consumer's health is tracked by a [tramli](https://github.com/op
 
 ## State diagram
 
-```
-INITIALIZING ──auto──────────────────────────────────> HEALTHY
-                                                           │
-HEALTHY      ──external(delivery result)──> ASSESSING ────┤
-                                               branch      │
-UNHEALTHY    ──external(delivery result)──> ASSESSING ─── ┤
-                                                           │
-                                                   ┌───────┴───────┐
-                                                   ▼               ▼
-                                               HEALTHY         UNHEALTHY
-                                                                   │
-                                                               DEAD ◄──── any error (onAnyError)
-                                                               │
-                                                         REMOVED (terminal)
-                                                   DEAD ──external(cleanup)──>
-```
-
-Mermaid:
-
 ```mermaid
 stateDiagram-v2
   [*] --> INITIALIZING

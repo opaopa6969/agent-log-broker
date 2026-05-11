@@ -61,34 +61,30 @@ schemas/
 
 ## データフロー
 
-```
-[ディスク上の JSONL ファイル]
-        │
-        ▼ fs.watch が readNewLines() をトリガー
-  FileWatcher
-        │  バイトオフセット N 以降の新しい行
-        ▼
-  生 JSON をパース → AgentMessage
-        │
-        ▼
-  RedactionPipeline.process()
-        │  PII マスク + セキュリティフラグ
-        ▼
-  BrokerEvent を構築
-  { _broker, _session, _index, type, message, securityFlags }
-        │
-        ▼
-  SubscriptionManager.matches(event, subscription)
-        │  登録済みコンシューマーごとに評価
-        ▼
-  BrokerCore.distribute(event, matchingConsumers)
-        │  Promise.allSettled — 1つの失敗が他を止めない
-        ▼
-  deliverToConsumer(event, consumer)   ← HTTP POST スタブ（Phase 1）
-        │
-        ├── 2xx  → ConsumerRegistry.recordDelivery(id, true)
-        ├── 5xx  → リトライ（maxRetries=3）→ DLQ（Phase 2）
-        └── 4xx  → 永続エラー → スキップ
+```mermaid
+flowchart TD
+    JSONL["ディスク上の JSONL ファイル"]
+    FW["FileWatcher"]
+    Parse["生 JSON をパース → AgentMessage"]
+    Redact["RedactionPipeline.process()<br/>PII マスク + セキュリティフラグ"]
+    Event["BrokerEvent を構築<br/>{ _broker, _session, _index,<br/>type, message, securityFlags }"]
+    Match["SubscriptionManager.matches(event, subscription)<br/>登録済みコンシューマーごとに評価"]
+    Distribute["BrokerCore.distribute(event, matchingConsumers)<br/>Promise.allSettled — 1つの失敗が他を止めない"]
+    Deliver["deliverToConsumer(event, consumer)<br/>HTTP POST スタブ（Phase 1）"]
+    OK["2xx → ConsumerRegistry.recordDelivery(id, true)"]
+    Retry["5xx → リトライ（maxRetries=3）→ DLQ（Phase 2）"]
+    Perm["4xx → 永続エラー → スキップ"]
+
+    JSONL -- "fs.watch が readNewLines() をトリガー" --> FW
+    FW -- "バイトオフセット N 以降の新しい行" --> Parse
+    Parse --> Redact
+    Redact --> Event
+    Event --> Match
+    Match --> Distribute
+    Distribute --> Deliver
+    Deliver --> OK
+    Deliver --> Retry
+    Deliver --> Perm
 ```
 
 ---
