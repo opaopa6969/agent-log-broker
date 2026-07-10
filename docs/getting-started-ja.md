@@ -34,7 +34,7 @@ npm run build
 npm run dev
 ```
 
-Broker が `~/.claude/projects/` の JSONL ログファイルの監視を開始する。
+> **注意**: `npm run dev` は `tsx watch src/index.ts` を実行するだけで、型チェックと変更時の再ビルドを行うにすぎない。`src/index.ts` は公開 API を再エクスポートするだけで**実行時の副作用が一切無い** — したがって Broker プロセスは起動せず、`~/.claude/projects/` の監視も始まらない。実行可能なエントリポイント（および下記の HTTP API）は Phase 1 作業。現時点で各構成要素を動かすには、`FileWatcher` / `ConsumerRegistry` をコードから直接駆動すること（下記セクション参照）。
 
 ### 2. コンシューマーを登録する
 

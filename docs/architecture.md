@@ -6,17 +6,17 @@
 
 ### 1. The broker is a pipe (BRK-PIPE)
 
-The broker has exactly seven responsibilities. It does not understand log content — it routes it.
+The broker is designed around exactly seven responsibilities. It does not understand log content — it routes it. The "Owner" column names the module intended to hold each responsibility; several are not yet connected to one another (see [Data flow](#data-flow) and [Limitations](#limitations)).
 
-| Responsibility | Owner |
-|---|---|
-| Discover log files | `FileWatcher.discoverSessions()` |
-| Watch for changes | `FileWatcher.watchSession()` |
-| Parse JSONL lines | adapter layer |
-| Redact PII | `RedactionPipeline` |
-| Flag dangerous content | `RedactionPipeline` |
-| Distribute events | `BrokerCore.distribute()` |
-| Track read offsets | `FileWatcher` (in-memory, see [Limitations](#limitations)) |
+| Responsibility | Owner | Status |
+|---|---|---|
+| Discover log files | `FileWatcher.discoverSessions()` | Implemented (symlink resolution pending) |
+| Watch for changes | `FileWatcher.watchSession()` | Implemented |
+| Parse JSONL lines | adapter layer | **Not implemented** — no JSONL line → `AgentMessage` converter exists; `watchSession()` emits the raw string |
+| Redact PII | `RedactionPipeline` | Implemented (but not invoked by `distribute()`) |
+| Flag dangerous content | `RedactionPipeline` | Dangerous commands only; banned-word flagging not implemented |
+| Distribute events | `BrokerCore.distribute()` | Fan-out loop only; does not apply `matches()` or redaction, and delivery is a stub |
+| Track read offsets | `FileWatcher` (in-memory, see [Limitations](#limitations)) | Implemented (byte/char inconsistency, see Limitations) |
 
 What the broker does **not** do:
 - Persist logs (consumer's job)
@@ -86,6 +86,8 @@ flowchart TD
     Deliver --> Retry
     Deliver --> Perm
 ```
+
+> **Wiring status**: This diagram is the target design, not the current code path. Today only `JSONL → FileWatcher` is connected. The `Parse` node has no implementation (no JSONL → `AgentMessage` converter), and `BrokerCore.distribute()` is invoked with a caller-supplied consumer list — it does **not** call `Parse`, `RedactionPipeline.process()`, or `SubscriptionManager.matches()`. No orchestrator / `main` connects these nodes; `src/index.ts` only re-exports the modules.
 
 ---
 
@@ -260,11 +262,12 @@ No filtering. Every event from every session is delivered. Used by session-repla
 
 Events are delivered only when they match all present filter criteria:
 
-- `projectPath` — exact match on `_session.projectPath`
-- `agentTypes` — `_session.agentType` must be in the list
-- `includeRoles` — `message.role` must be in the list
-- `includeFields` / `excludeFields` — payload field projection (Phase 2)
-- `redactionLevel` — override redaction level for this consumer
+- `projectPath` — exact match on `_session.projectPath` (implemented)
+- `agentTypes` — `_session.agentType` must be in the list (implemented)
+- `includeRoles` — `message.role` must be in the list (implemented)
+- `includeFields` / `excludeFields` — payload field projection (not yet applied; Phase 2)
+- `redactionLevel` — override redaction level for this consumer (not yet applied; `matchesFilter()` ignores it)
+- `minIntervalMs` — minimum interval between deliveries (not yet applied)
 
 ### trigger
 
@@ -290,7 +293,12 @@ Security flags are generated at all levels (dangerous command detection does not
 
 | Limitation | Impact | Planned fix |
 |---|---|---|
+| Pipeline not wired | `distribute()` calls neither `matches()` nor `RedactionPipeline`; no orchestrator connects the data-flow stages (`index.ts` only re-exports) | Phase 1 |
+| Parse stage missing | No JSONL → `AgentMessage` converter; `FileWatcher` emits the raw line | Phase 1 |
+| `filtered` projection / redaction not applied | `includeFields`, `excludeFields`, `redactionLevel`, `minIntervalMs` ignored by `matchesFilter()` | Phase 2 |
+| Banned-word flagging not implemented | `banned_word` / `bannedWordHits` defined but no word list or detection | Phase 2 |
 | `deliverToConsumer` stub | No events reach consumers | Phase 1 |
 | In-memory offsets | Sessions re-read from start on restart | Phase 2 |
+| Offset byte/char inconsistency | `readNewLines()` slices by UTF-16 code unit but advances offset by `Buffer.byteLength() + 1` (bytes); drifts on multi-byte content | Suspected code bug |
 | Symlink resolution missing | `projectPath` is a hash string | Phase 2 |
 | trigger evaluation stub | trigger consumers never fire | Phase 2 |
