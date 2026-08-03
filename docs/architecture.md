@@ -16,7 +16,7 @@ The broker is designed around exactly seven responsibilities. It does not unders
 | Redact PII | `RedactionPipeline` | Implemented (but not invoked by `distribute()`) |
 | Flag dangerous content | `RedactionPipeline` | Dangerous commands only; banned-word flagging not implemented |
 | Distribute events | `BrokerCore.distribute()` | Fan-out loop only; does not apply `matches()` or redaction, and delivery is a stub |
-| Track read offsets | `FileWatcher` (in-memory, see [Limitations](#limitations)) | Implemented (byte/char inconsistency, see Limitations) |
+| Track read offsets | `FileWatcher` (in-memory, see [Limitations](#limitations)) | Implemented with byte offsets |
 
 What the broker does **not** do:
 - Persist logs (consumer's job)
@@ -299,6 +299,5 @@ Security flags are generated at all levels (dangerous command detection does not
 | Banned-word flagging not implemented | `banned_word` / `bannedWordHits` defined but no word list or detection | Phase 2 |
 | `deliverToConsumer` stub | No events reach consumers | Phase 1 |
 | In-memory offsets | Sessions re-read from start on restart | Phase 2 |
-| Offset byte/char inconsistency | `readNewLines()` slices by UTF-16 code unit but advances offset by `Buffer.byteLength() + 1` (bytes); drifts on multi-byte content | Suspected code bug |
 | Symlink resolution missing | `projectPath` is a hash string | Phase 2 |
 | trigger evaluation stub | trigger consumers never fire | Phase 2 |

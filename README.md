@@ -39,7 +39,7 @@ The broker's seven responsibilities and their current implementation status:
 | Redact | Mask PII (minimal / standard / strict) | Implemented (`RedactionPipeline`: PII + credentials) |
 | Flag | Detect dangerous commands and banned words | **Partial** — dangerous-command detection only; banned-word detection is not implemented (no word list, no scan) |
 | Distribute | Fan-out `BrokerEvent` to matching consumers | **Stub** — `distribute()` fans out via `Promise.allSettled`, but delivery is a stub and it applies neither `SubscriptionManager.matches()` nor redaction |
-| Offset Track | Remember how far each file has been read | Implemented in-memory (byte/char caveat — see [Known limitations](#known-limitations)) |
+| Offset Track | Remember how far each file has been read | Implemented in-memory (byte offsets; persistence remains a limitation) |
 
 ---
 
@@ -197,7 +197,6 @@ The `BrokerEvent` schema (`schemas/broker-event.schema.json`, JSON Schema Draft 
 | Banned-word flagging not implemented | `RedactionPipeline` flags dangerous commands and PII/credentials only. The `banned_word` flag type and `bannedWordHits` field exist, but there is no word list and no detection code. |
 | `deliverToConsumer` is a stub | HTTP POST delivery not yet implemented. Returns `success: true` unconditionally. Phase 1 work. |
 | FileWatcher offsets are in-memory | Offsets are lost on process restart. A session will be re-read from offset 0 on startup. Persistent offset store is Phase 2 work. |
-| Offset unit is inconsistent (byte vs. char) | Despite "byte-offset tracking", `readNewLines()` slices `content.slice(currentOffset)` in UTF-16 code units but advances the offset by `Buffer.byteLength(line) + 1` (bytes). The two agree only for ASCII; multi-byte content (e.g. Japanese) drifts. Suspected code bug, not yet fixed. |
 | Symlink resolution incomplete | `discoverSessions()` returns the raw directory hash as `projectPath`. Symlink resolution to the real project path is not yet implemented. |
 | trigger evaluation is a stub | `matchesTrigger()` always returns `false`. Phase 2 work. |
 

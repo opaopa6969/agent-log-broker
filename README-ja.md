@@ -39,7 +39,7 @@ Broker の7つの責務と現在の実装状態:
 | Redact | PII をマスク（minimal / standard / strict） | 実装済み（`RedactionPipeline`: PII + 認証情報） |
 | Flag | 危険コマンドと禁止語を検出 | **部分的** — 危険コマンド検出のみ。禁止語検出は未実装（語リストも走査処理も無い） |
 | Distribute | マッチするコンシューマーへ `BrokerEvent` をファンアウト | **スタブ** — `distribute()` は `Promise.allSettled` でファンアウトするが、配信自体がスタブで、`SubscriptionManager.matches()` も redaction も適用しない |
-| Offset Track | 各ファイルをどこまで読んだか記憶 | インメモリで実装済み（byte/char の注意点は[既知の制限事項](#既知の制限事項) を参照） |
+| Offset Track | 各ファイルをどこまで読んだか記憶 | インメモリで実装済み（バイトオフセット。永続化は未対応） |
 
 ---
 
@@ -197,7 +197,6 @@ await registry.recordDelivery("my-consumer", false); // ASSESSING をトリガ�
 | 禁止語フラグが未実装 | `RedactionPipeline` は危険コマンドと PII / 認証情報のみフラグ付与する。`banned_word` フラグ型と `bannedWordHits` フィールドは存在するが、語リストも検出コードも無い。 |
 | `deliverToConsumer` はスタブ | HTTP POST 配信は未実装。現在は無条件で `success: true` を返す。Phase 1 作業。 |
 | FileWatcher オフセットはインメモリ | プロセス再起動でオフセットが失われる。起動時にオフセット 0 からセッションが再読み込みされる。永続オフセットストアは Phase 2 作業。 |
-| オフセットの単位が不整合（byte / char） | 「byte-offset tracking」と謳うが、`readNewLines()` は `content.slice(currentOffset)` を UTF-16 コード単位で切りつつ、オフセットを `Buffer.byteLength(line) + 1`（バイト）で加算する。両者が一致するのは ASCII のみで、マルチバイト（例: 日本語）ではズレる。コード側のバグと推測されるが未修正。 |
 | symlink 解決が未完成 | `discoverSessions()` は `projectPath` にディレクトリハッシュをそのまま返す。実際のプロジェクトパスへの symlink 解決は未実装。 |
 | trigger 評価はスタブ | `matchesTrigger()` は常に `false` を返す。Phase 2 作業。 |
 

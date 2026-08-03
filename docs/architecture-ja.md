@@ -16,7 +16,7 @@ Broker は7つの責務を軸に設計されている。ログの内容を理解
 | PII のマスク | `RedactionPipeline` | 実装済み（ただし `distribute()` からは呼ばれない） |
 | 危険コンテンツのフラグ付与 | `RedactionPipeline` | 危険コマンドのみ。禁止語フラグは未実装 |
 | イベントの配信 | `BrokerCore.distribute()` | ファンアウトのループのみ。`matches()` も redaction も適用せず、配信はスタブ |
-| 読み取りオフセットの追跡 | `FileWatcher`（インメモリ。[制限事項](#制限事項) 参照） | 実装済み（byte/char 不整合あり。制限事項参照） |
+| 読み取りオフセットの追跡 | `FileWatcher`（インメモリ。[制限事項](#制限事項) 参照） | バイトオフセットで実装済み |
 
 Broker が**やらないこと**:
 - ログの永続化（コンシューマーの仕事）
@@ -299,6 +299,5 @@ type ConsumerState =
 | 禁止語フラグ未実装 | `banned_word` / `bannedWordHits` は定義済みだが語リストも検出も無い | Phase 2 |
 | `deliverToConsumer` スタブ | コンシューマーにイベントが届かない | Phase 1 |
 | インメモリオフセット | 再起動時にセッションが先頭から再読み込みされる | Phase 2 |
-| オフセットの byte/char 不整合 | `readNewLines()` は UTF-16 コード単位で切りつつオフセットを `Buffer.byteLength() + 1`（バイト）で加算。マルチバイトでズレる | コード側のバグと推測 |
 | symlink 解決未実装 | `projectPath` がハッシュ文字列になる | Phase 2 |
 | trigger 評価スタブ | trigger コンシューマーが発火しない | Phase 2 |
