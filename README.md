@@ -218,8 +218,7 @@ npm run typecheck   # tsc --noEmit
 src/
 ├── broker/
 │   ├── core.ts          # BrokerCore — fan-out engine
-│   ├── subscription.ts  # SubscriptionManager + BrokerEvent types
-│   └── lifecycle.ts     # (reserved)
+│   └── subscription.ts  # SubscriptionManager + BrokerEvent types
 ├── consumers/
 │   ├── types.ts         # Consumer, ConsumerState, DeliveryResult
 │   ├── lifecycle.ts     # tramli FlowDefinition<ConsumerState>

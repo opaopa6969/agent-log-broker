@@ -5,6 +5,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- file-watcher tracks read position in bytes (multibyte offset drift) — `readNewLines()` now scans with `Buffer.indexOf(0x0a)` and advances by byte offset; ASCII-only drift eliminated for UTF-8 multi-byte content
+
 ### Planned
 - Real HTTP POST delivery in `deliverToConsumer` (Phase 1)
 - Persistent offset store (Phase 2)
@@ -14,7 +17,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [0.1.0] - 2026-04-19
 
 ### Added
-- `FileWatcher` — tail `~/.claude/projects/**/*.jsonl` via `node:fs.watch`; in-memory read-offset tracking per session path (see Known stubs re: byte/char inconsistency)
+- `FileWatcher` — tail `~/.claude/projects/**/*.jsonl` via `node:fs.watch`; in-memory read-offset tracking per session path (offset tracked in bytes; see [Unreleased] Fixed for the multibyte offset correction)
 - `BrokerCore.distribute()` — fan-out with `Promise.allSettled`; per-consumer `DeliveryResult`. Note: does not yet apply `SubscriptionManager.matches()` or redaction (no orchestrator wires the pipeline)
 - `SubscriptionManager` — `full_stream`, `filtered`, `trigger` modes; `matches()` method defined. `filtered` evaluates `projectPath` / `agentTypes` / `includeRoles` only (no field projection or per-consumer redaction); `trigger` is a stub
 - `ConsumerRegistry` — tramli `FlowDefinition<ConsumerState>`-backed health tracking; `InMemoryFlowStore`
@@ -33,4 +36,3 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `matchesTrigger()`: always returns `false`
 - `discoverSessions()`: `projectPath` returns raw directory hash (symlink resolution not implemented)
 - FileWatcher offsets are in-memory only — lost on process restart
-- Offset unit inconsistency: `readNewLines()` slices by UTF-16 code unit but advances the offset by `Buffer.byteLength() + 1` (bytes); consistent only for ASCII, drifts on multi-byte content (suspected code bug, not yet fixed)
