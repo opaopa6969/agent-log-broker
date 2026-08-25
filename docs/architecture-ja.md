@@ -6,17 +6,17 @@
 
 ### 1. Broker はパイプである（BRK-PIPE）
 
-Broker の責務はちょうど7つ。ログの内容を理解せずルーティングするだけ。
+Broker は7つの責務を軸に設計されている。ログの内容を理解せずルーティングするだけ。「担当」列は各責務を持つべきモジュールを示すが、いくつかは相互にまだ結線されていない（[データフロー](#データフロー) および [制限事項](#制限事項) 参照）。
 
-| 責務 | 担当 |
-|---|---|
-| ログファイルの検出 | `FileWatcher.discoverSessions()` |
-| 変更の監視 | `FileWatcher.watchSession()` |
-| JSONL 行のパース | アダプター層 |
-| PII のマスク | `RedactionPipeline` |
-| 危険コンテンツのフラグ付与 | `RedactionPipeline` |
-| イベントの配信 | `BrokerCore.distribute()` |
-| 読み取りオフセットの追跡 | `FileWatcher`（インメモリ。[制限事項](#制限事項) 参照） |
+| 責務 | 担当 | 状態 |
+|---|---|---|
+| ログファイルの検出 | `FileWatcher.discoverSessions()` | 実装済み（symlink 解決は未対応） |
+| 変更の監視 | `FileWatcher.watchSession()` | 実装済み |
+| JSONL 行のパース | アダプター層 | **未実装** — JSONL 行 → `AgentMessage` 変換器は存在しない。`watchSession()` は生文字列を渡す |
+| PII のマスク | `RedactionPipeline` | 実装済み（ただし `distribute()` からは呼ばれない） |
+| 危険コンテンツのフラグ付与 | `RedactionPipeline` | 危険コマンドのみ。禁止語フラグは未実装 |
+| イベントの配信 | `BrokerCore.distribute()` | ファンアウトのループのみ。`matches()` も redaction も適用せず、配信はスタブ |
+| 読み取りオフセットの追跡 | `FileWatcher`（インメモリ。[制限事項](#制限事項) 参照） | バイトオフセットで実装済み |
 
 Broker が**やらないこと**:
 - ログの永続化（コンシューマーの仕事）
@@ -86,6 +86,8 @@ flowchart TD
     Deliver --> Retry
     Deliver --> Perm
 ```
+
+> **結線状態**: この図は設計目標であって、現在のコードパスではない。現状で繋がっているのは `JSONL → FileWatcher` のみ。`Parse` ノードには実装が無く（JSONL → `AgentMessage` 変換器が無い）、`BrokerCore.distribute()` は呼び出し側が渡したコンシューマーリストに対して動くだけで、`Parse`・`RedactionPipeline.process()`・`SubscriptionManager.matches()` のいずれも**呼ばない**。これらのノードを結ぶオーケストレータ / `main` は存在せず、`src/index.ts` はモジュールを再エクスポートするだけ。
 
 ---
 
@@ -260,11 +262,12 @@ type ConsumerState =
 
 以下の全条件に合致するイベントのみ配信:
 
-- `projectPath` — `_session.projectPath` との完全一致
-- `agentTypes` — `_session.agentType` がリスト内に含まれる
-- `includeRoles` — `message.role` がリスト内に含まれる
-- `includeFields` / `excludeFields` — ペイロードフィールドの投影（Phase 2）
-- `redactionLevel` — このコンシューマー用の Redaction レベル上書き
+- `projectPath` — `_session.projectPath` との完全一致（実装済み）
+- `agentTypes` — `_session.agentType` がリスト内に含まれる（実装済み）
+- `includeRoles` — `message.role` がリスト内に含まれる（実装済み）
+- `includeFields` / `excludeFields` — ペイロードフィールドの投影（未適用。Phase 2）
+- `redactionLevel` — このコンシューマー用の Redaction レベル上書き（未適用。`matchesFilter()` は無視する）
+- `minIntervalMs` — 配信間の最小間隔（未適用）
 
 ### trigger
 
@@ -290,6 +293,10 @@ type ConsumerState =
 
 | 制限事項 | 影響 | 対応予定 |
 |---|---|---|
+| パイプライン未結線 | `distribute()` は `matches()` も `RedactionPipeline` も呼ばず、データフローの各ステージを繋ぐオーケストレータが無い（`index.ts` は再エクスポートのみ） | Phase 1 |
+| Parse ステージ欠落 | JSONL → `AgentMessage` 変換器が無く、`FileWatcher` は生の行を渡す | Phase 1 |
+| `filtered` の投影 / redaction 未適用 | `includeFields`・`excludeFields`・`redactionLevel`・`minIntervalMs` を `matchesFilter()` が無視 | Phase 2 |
+| 禁止語フラグ未実装 | `banned_word` / `bannedWordHits` は定義済みだが語リストも検出も無い | Phase 2 |
 | `deliverToConsumer` スタブ | コンシューマーにイベントが届かない | Phase 1 |
 | インメモリオフセット | 再起動時にセッションが先頭から再読み込みされる | Phase 2 |
 | symlink 解決未実装 | `projectPath` がハッシュ文字列になる | Phase 2 |

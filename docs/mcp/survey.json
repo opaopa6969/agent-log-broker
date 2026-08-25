@@ -1,0 +1,197 @@
+{
+  "repo": "agent-log-broker",
+  "surveyed_at": "2026-08-21T23:16:21Z",
+  "kind": "library",
+  "summary": "AskOS ワークスペースエコシステムのセントラルログブローカー。LLM エージェント（Claude Code 等）の JSONL セッションログを ~/.claude/projects/ から監視し、PII リダクション・セキュリティフラグ付けを経て、登録済みコンシューマへファンアウト配信する。設計原則は「I am a pipe, not a judge」（内容を解釈しない、配信のみ）。現状は各モジュールが存在するがパイプライン全体が未接続（parse ステージ未実装、deliverToConsumer がスタブ、HTTP API サーバー未実装）。volta catalog にはサービスとして登録済み（port 3100, wsl 環境）だが MCP バックエンドは未所持。",
+  "decision": "defer",
+  "decision_reason": "エコシステム内の役割は明確で MCP 化の価値（エージェントからの配信制御・コンシューマ登録・セッション状態の照会・リダクションの実行）は描ける。しかし現状はパイプラインが未接続で HTTP API サーバーすら存在せず、MCP に公開できる操作対象（動作する配信エンジン）がない。Phase 1 の実装（parse ステージ・HTTP API・orchestrator）が完了してから再評価すべき。_library-serve ではなく wrap に近いが、包むべき既存 HTTP API がまだないため defer。再評価条件: deliverToConsumer の実装完了 + HTTP API サーバー立ち上げ + パイプライン接続。",
+  "existing": {
+    "http_api": false,
+    "cli": false,
+    "mcp": false,
+    "healthz": false,
+    "volta_manifest": false,
+    "hosted_url": null
+  },
+  "proposed_namespace": "broker",
+  "capabilities": [
+    {
+      "verb": "セッションを探索する",
+      "kind": "tool",
+      "name": "discover_sessions",
+      "io": "{ basePath?: string } → DiscoveredSession[]",
+      "side_effect": "read",
+      "long_running": false,
+      "maps_to": "src/adapters/file-watcher.ts:FileWatcher.discoverSessions()"
+    },
+    {
+      "verb": "セッションの監視を開始する",
+      "kind": "tool",
+      "name": "watch_session",
+      "io": "{ sessionPath: string } → { started: boolean }",
+      "side_effect": "write",
+      "long_running": false,
+      "maps_to": "src/adapters/file-watcher.ts:FileWatcher.watchSession()"
+    },
+    {
+      "verb": "セッションの監視を停止する",
+      "kind": "tool",
+      "name": "unwatch_session",
+      "io": "{ sessionPath: string } → { stopped: boolean }",
+      "side_effect": "write",
+      "long_running": false,
+      "maps_to": "src/adapters/file-watcher.ts:FileWatcher.unwatchSession()"
+    },
+    {
+      "verb": "コンシューマを登録する",
+      "kind": "tool",
+      "name": "register_consumer",
+      "io": "{ consumerId: string, callbackUrl: string, mode: SubscriptionMode, filter?: FilterConfig, trigger?: TriggerConfig } → Consumer",
+      "side_effect": "write",
+      "long_running": false,
+      "maps_to": "src/consumers/registry.ts:ConsumerRegistry.register() + src/broker/subscription.ts:SubscriptionManager.add()"
+    },
+    {
+      "verb": "コンシューマを登録解除する",
+      "kind": "tool",
+      "name": "unregister_consumer",
+      "io": "{ consumerId: string } → { removed: boolean }",
+      "side_effect": "write",
+      "long_running": false,
+      "maps_to": "src/consumers/registry.ts:ConsumerRegistry.unregister() + src/broker/subscription.ts:SubscriptionManager.remove()"
+    },
+    {
+      "verb": "コンシューマ一覧を取得する",
+      "kind": "tool",
+      "name": "list_consumers",
+      "io": "{} → Consumer[]（id, status, messagesDelivered, lastDelivery, errors を含む）",
+      "side_effect": "read",
+      "long_running": false,
+      "maps_to": "src/consumers/registry.ts:ConsumerRegistry.list()"
+    },
+    {
+      "verb": "コンシューマの状態を取得する",
+      "kind": "tool",
+      "name": "get_consumer_state",
+      "io": "{ consumerId: string } → ConsumerState | null",
+      "side_effect": "read",
+      "long_running": false,
+      "maps_to": "src/consumers/registry.ts:ConsumerRegistry.getState()"
+    },
+    {
+      "verb": "テキストのPIIリダクションとセキュリティフラグ付けを行う",
+      "kind": "tool",
+      "name": "redact_text",
+      "io": "{ text: string, level?: 'minimal'|'standard'|'strict' } → { redactedText: string, redactionCount: number, securityFlags: SecurityFlag[] }",
+      "side_effect": "read",
+      "long_running": false,
+      "maps_to": "src/security/redaction.ts:RedactionPipeline.process()"
+    },
+    {
+      "verb": "ブローカーの状態を取得する",
+      "kind": "tool",
+      "name": "get_status",
+      "io": "{} → { watchedSessions: number, consumers: number, consumerStates: Record<string, ConsumerState> }",
+      "side_effect": "read",
+      "long_running": false,
+      "maps_to": "FileWatcher + ConsumerRegistry + SubscriptionManager の統合（要新規実装）"
+    },
+    {
+      "verb": "能力の仕様",
+      "kind": "resource",
+      "name": "spec",
+      "uri": "broker://spec"
+    },
+    {
+      "verb": "使い方",
+      "kind": "resource",
+      "name": "guide",
+      "uri": "broker://guide"
+    },
+    {
+      "verb": "BrokerEvent スキーマ",
+      "kind": "resource",
+      "name": "schema",
+      "uri": "broker://schema/broker-event"
+    },
+    {
+      "verb": "コンシューマライフサイクルの仕様",
+      "kind": "resource",
+      "name": "lifecycle",
+      "uri": "broker://lifecycle"
+    },
+    {
+      "verb": "ログ監視ブローカーの運用手順",
+      "kind": "skill",
+      "name": "operate-broker",
+      "locality": "service"
+    }
+  ],
+  "composition_examples": [
+    "broker__discover_sessions → broker__watch_session → broker__register_consumer (mode=full_stream) → claude-session-replay が BrokerEvent を HTTP POST で受信して蓄積・再生",
+    "broker__register_consumer (mode=trigger, conditions=[{field:'securityFlags',op:'not_empty'}]) → securityFlags 検出時のみ Slack webhook へ配信",
+    "broker__redact_text → 問題のあるテキストを事前スキャンし、SecurityFlag を抽出 → askos__create_task でレビュータスクを起票"
+  ],
+  "dependencies": [
+    {
+      "repo": "tramli",
+      "direction": "depends_on",
+      "capability": "ConsumerState ライフサイクル管理（FlowDefinition / FlowEngine / InMemoryFlowStore）",
+      "exists_now": true,
+      "note": "tramli は library として volta catalog に登録済み。MCP バックエンドは未所持。agent-log-broker の ConsumerRegistry が直接 import して使用。"
+    },
+    {
+      "repo": "claude-session-replay",
+      "direction": "provides_to",
+      "capability": "BrokerEvent の full_stream 配信（コンシューマとして受信）",
+      "exists_now": false,
+      "note": "claude-session-replay は MCP バックエンド未所持（volta catalog にサービス登録済み）。ブローカーの HTTP API が未実装のため、現在は配信経路が繋がっていない。Phase 1 完了後に接続予定。"
+    },
+    {
+      "repo": "AskOS",
+      "direction": "provides_to",
+      "capability": "BrokerEvent の filtered 配信（コンシューマとして受信）",
+      "exists_now": false,
+      "note": "AskOS は MCP バックエンド未所持（volta catalog にサービス登録済み、systemd で稼働）。ブローカーの HTTP API が未実装のため未接続。"
+    },
+    {
+      "repo": "issue-broker",
+      "direction": "depends_on",
+      "capability": "issue-broker MCP server（.mcp.json で stdio クライアントとして設定済み）",
+      "exists_now": true,
+      "note": ".mcp.json に issue-broker を stdio で登録済み。開発時の issue 管理に使用。agent-log-broker 自体の MCP 化とは無関係だが、issue-hub 協調で Phase 2 が使う可能性あり。"
+    }
+  ],
+  "library_serve": {
+    "needed": true,
+    "new_work": [
+      "HTTP API サーバー（Express/Fastify）— /mcp, /healthz エンドポイント",
+      "PORT 環境変数対応",
+      "volta.service.json manifest",
+      "systemd unit または docker 設定",
+      "MCP server（@modelcontextprotocol/sdk 等）の新規実装",
+      "パイプライン接続（orchestrator: watch → parse → redact → flag → match → distribute）",
+      "JSONL → AgentMessage パースステージの実装",
+      "deliverToConsumer の実 HTTP POST 実装",
+      "confirm: bool パラメータの付与（壊す系 tool: watch_session / unwatch_session / register_consumer / unregister_consumer）"
+    ],
+    "runtime": "node",
+    "estimated_effort": "L"
+  },
+  "risks": [
+    "パイプラインが未接続: 現状では MCP 化しても動作する配信エンジンがない。Phase 1 実装（parse, HTTP API, orchestrator）が前提。",
+    "PII リダクションは実装済みだが、リダクション結果をエージェントに返す場合、元テキストがログに残る可能性がある。redact_text tool は read-only だが取り扱い注意。",
+    "オフセットがインメモリのみ: プロセス再起動で全セッションを再読み込み → コンシューマに重複イベントが配信される。冪等性はコンシューマ側で担保する必要がある。",
+    "外部 API 課金: 該当なし（Slack webhook はコンシューマ側の責務）。",
+    "破壊的操作: unwatch_session, unregister_consumer は稼働中の配信を停止するため confirm パラメータを必須とする。",
+    "シンボリックリンク解決未実装: projectPath がハッシュ文字列のまま。フィルタリング時の projectPath 指定が直感と異なる可能性。",
+    "trigger 条件評価がスタブ: trigger モードのコンシューマは現在機能しない。"
+  ],
+  "open_questions": [
+    "Phase 1（parse, HTTP API, orchestrator, deliverToConsumer 実装）はいつ完了するか？完了後に再評価が必要。",
+    "MCP 化する場合、既存の HTTP API（Phase 1 で計画中の /api/subscribe 等）をそのまま MCP tool として薄く包む（wrap）形にするか、MCP 専用の tool 実装を書くか？",
+    "ブローカー自体を MCP サーバとして実装する場合、namespace は 'broker' で確定か？volt catalog ではサービス ID が 'agent-log-broker' だが、MCP namespace として 'broker' は適切か？（catalog/probe/skill は予約語）",
+    "redact_text tool を単独で公開する場合、これはブローカーの役割（pipe）を超えて「判断」をしているように見える。設計原則との整合性を持ち主に確認すべきか？",
+    "claude-session-replay と AskOS が MCP バックエンドを取得した後、ブローカーの MCP 化優先度はどう変わるか？（コンシューマ側が MCP で直接 BrokerEvent を受信できる形があれば、ブローカー自体の MCP 化は不要になる可能性も）"
+  ]
+}

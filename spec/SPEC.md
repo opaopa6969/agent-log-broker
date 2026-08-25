@@ -155,11 +155,11 @@ interface DiscoveredSession {
 
 `readNewLines(sessionPath, onLine)` の動作:
 
-1. ファイル全体を UTF-8 で読み込む
-2. `currentOffset` 以降の新規コンテンツをスライスする
-3. 改行で分割し、空行をフィルタリングする
-4. 各行に対して `onLine(line, offset)` を呼び出す
-5. バイトオフセットを更新する (`Buffer.byteLength(line, "utf-8") + 1`)
+1. ファイル全体を Buffer として読み込む（encoding 指定なし）
+2. `currentOffset` が `buffer.length` 以上なら新規コンテンツなしとして return する（切り詰め/ローテーション対策）
+3. `buffer.indexOf(0x0a, lineStart)` で改行バイト位置を探索する
+4. `buffer.toString("utf-8", lineStart, newlineIndex)` で行を抽出し、空行をフィルタリングして `onLine(line, lineStart)` を呼び出す
+5. `lineStart = newlineIndex + 1` でバイトオフセットを更新する（改行バイトの直後から次行を開始）
 
 #### 2.1.4 監視停止
 
@@ -1475,7 +1475,7 @@ Phase 2 以降の計画:
 ### 12.9 tsconfig 概要
 
 - `target`: `ES2022` 以上 (Node.js 20 対応)
-- `module`: `NodeNext` (ESM + `.js` 拡張子インポート)
+- `module`: `ESNext`, `moduleResolution`: `bundler`
 - `strict`: `true`
 - `outDir`: `dist/`
 - `rootDir`: `src/`

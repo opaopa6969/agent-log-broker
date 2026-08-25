@@ -25,19 +25,21 @@ Central log broker for the AskOS workspace ecosystem — fan-out Claude session 
 
 ## What it does
 
-agent-log-broker watches `~/.claude/projects/` for JSONL log files written by Claude Code (and future agents), parses each line into a common `AgentMessage` model, wraps it in a `BrokerEvent` envelope, and fans it out to registered consumers according to their subscription mode.
+agent-log-broker's **design target** is to watch `~/.claude/projects/` for JSONL log files written by Claude Code (and future agents), parse each line into a common `AgentMessage` model, wrap it in a `BrokerEvent` envelope, and fan it out to registered consumers according to their subscription mode.
 
-The broker's seven responsibilities:
+Today the individual building blocks exist as separate modules, but **they are not yet wired together into a running pipeline** (see the Status column below and [Known limitations](#known-limitations)).
 
-| Responsibility | Description |
-|---|---|
-| Discover | Locate agent log files under the base path |
-| Watch | Detect file changes via `fs.watch` |
-| Parse | Convert raw JSONL lines to `AgentMessage` |
-| Redact | Mask PII (minimal / standard / strict) |
-| Flag | Detect dangerous commands and banned words |
-| Distribute | Fan-out `BrokerEvent` to matching consumers |
-| Offset Track | Remember how far each file has been read |
+The broker's seven responsibilities and their current implementation status:
+
+| Responsibility | Description | Status |
+|---|---|---|
+| Discover | Locate agent log files under the base path | Implemented (`FileWatcher.discoverSessions()`; symlink resolution pending) |
+| Watch | Detect file changes via `fs.watch` | Implemented (`FileWatcher.watchSession()`) |
+| Parse | Convert raw JSONL lines to `AgentMessage` | **Not implemented** — the `AgentMessage` type is defined, but no code converts a JSONL line into one; `watchSession()` hands the raw string to `onLine` |
+| Redact | Mask PII (minimal / standard / strict) | Implemented (`RedactionPipeline`: PII + credentials) |
+| Flag | Detect dangerous commands and banned words | **Partial** — dangerous-command detection only; banned-word detection is not implemented (no word list, no scan) |
+| Distribute | Fan-out `BrokerEvent` to matching consumers | **Stub** — `distribute()` fans out via `Promise.allSettled`, but delivery is a stub and it applies neither `SubscriptionManager.matches()` nor redaction |
+| Offset Track | Remember how far each file has been read | Implemented in-memory (byte offsets; persistence remains a limitation) |
 
 ---
 
@@ -58,6 +60,8 @@ flowchart TD
     Broker -- fan-out --> Slack
     Broker -- fan-out --> Dash
 ```
+
+> **Wiring status**: The diagram shows the target design. In the current code these stages exist as independent modules, but nothing connects them: `BrokerCore.distribute()` does not invoke parsing, redaction, flagging, or `SubscriptionManager.matches()`, and there is no orchestrator / `main` that runs `Discover → Watch → Parse → Redact → Flag → Distribute` end to end. `src/index.ts` only re-exports the modules. Of the chain above, only `Discover → Watch` is actually connected today (via `FileWatcher`).
 
 ---
 
@@ -93,6 +97,8 @@ Receive events matching project path, agent type, role, and field criteria. Used
   }
 }
 ```
+
+> **Note**: `matchesFilter()` currently evaluates only `projectPath`, `agentTypes`, and `includeRoles`. `includeFields` / `excludeFields` (field projection), `redactionLevel` (per-consumer redaction), and `minIntervalMs` (rate limiting) are accepted by the `FilterConfig` type but are **not yet applied** — the event payload is passed through unchanged.
 
 ### trigger
 
@@ -185,6 +191,10 @@ The `BrokerEvent` schema (`schemas/broker-event.schema.json`, JSON Schema Draft 
 
 | Limitation | Detail |
 |---|---|
+| Pipeline is not wired end to end | `BrokerCore.distribute()` calls neither `SubscriptionManager.matches()` nor `RedactionPipeline`; there is no orchestrator / `main` connecting watch → parse → redact → flag → match → distribute. `src/index.ts` only re-exports modules. |
+| Parse stage is missing | No code converts a JSONL line into `AgentMessage`. The type is defined; the converter is not written. `FileWatcher` emits the raw line string. |
+| `filtered` field projection / redaction not applied | `matchesFilter()` evaluates `projectPath` / `agentTypes` / `includeRoles` only. `includeFields`, `excludeFields`, `redactionLevel`, and `minIntervalMs` are not applied. |
+| Banned-word flagging not implemented | `RedactionPipeline` flags dangerous commands and PII/credentials only. The `banned_word` flag type and `bannedWordHits` field exist, but there is no word list and no detection code. |
 | `deliverToConsumer` is a stub | HTTP POST delivery not yet implemented. Returns `success: true` unconditionally. Phase 1 work. |
 | FileWatcher offsets are in-memory | Offsets are lost on process restart. A session will be re-read from offset 0 on startup. Persistent offset store is Phase 2 work. |
 | Symlink resolution incomplete | `discoverSessions()` returns the raw directory hash as `projectPath`. Symlink resolution to the real project path is not yet implemented. |
@@ -208,8 +218,7 @@ npm run typecheck   # tsc --noEmit
 src/
 ├── broker/
 │   ├── core.ts          # BrokerCore — fan-out engine
-│   ├── subscription.ts  # SubscriptionManager + BrokerEvent types
-│   └── lifecycle.ts     # (reserved)
+│   └── subscription.ts  # SubscriptionManager + BrokerEvent types
 ├── consumers/
 │   ├── types.ts         # Consumer, ConsumerState, DeliveryResult
 │   ├── lifecycle.ts     # tramli FlowDefinition<ConsumerState>
@@ -231,11 +240,13 @@ schemas/
 ### Phase 1 — File watcher + basic fan-out (current)
 
 - [x] `FileWatcher` — `~/.claude/projects/` JSONL monitoring
-- [x] `BrokerCore.distribute()` — fan-out with `Promise.allSettled`
-- [x] `SubscriptionManager` — full\_stream + filtered matching
+- [x] `BrokerCore.distribute()` — fan-out with `Promise.allSettled` (delivery still a stub; no filter/redaction applied)
+- [x] `SubscriptionManager` — full\_stream + filtered matching (filtered matches on project / agent / role only; field projection and per-consumer redaction not yet applied)
 - [x] `ConsumerRegistry` — tramli-backed lifecycle
-- [x] `RedactionPipeline` — PII masking + security flags
+- [x] `RedactionPipeline` — PII / credential masking + dangerous-command flags (banned-word flagging not yet implemented)
 - [x] `BrokerEvent` JSON Schema (Draft 2020-12)
+- [ ] Parse stage — JSONL line → `AgentMessage` converter (type defined; converter not written)
+- [ ] Pipeline wiring — orchestrator running watch → parse → redact → flag → match → distribute (components exist but are not connected; `index.ts` only re-exports)
 - [ ] `deliverToConsumer` — real HTTP POST (stub currently)
 - [ ] Persistent offset store
 

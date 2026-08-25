@@ -34,7 +34,7 @@ npm run build
 npm run dev
 ```
 
-The broker starts watching `~/.claude/projects/` for JSONL log files.
+> **Note**: `npm run dev` runs `tsx watch src/index.ts`, which only type-checks and rebuilds on change. `src/index.ts` re-exports the public API and has **no runtime side effects** — so no broker process starts and no watching of `~/.claude/projects/` begins. A runnable entry point (and the HTTP API below) is Phase 1 work. To exercise the components today, drive `FileWatcher` / `ConsumerRegistry` directly from code (see the sections below).
 
 ### 2. Register a consumer
 
