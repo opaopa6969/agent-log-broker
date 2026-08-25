@@ -120,7 +120,21 @@ export class FileWatcher {
     }
   }
 
-  /** Read new lines since last offset */
+  /**
+   * Read new lines since last offset.
+   *
+   * The tracked offset is a **byte** offset into the file (not a JS string /
+   * UTF-16 code-unit index). This matters because the log lines routinely
+   * contain multibyte characters (Japanese agent logs, emoji, etc.): a single
+   * character can span several bytes, so a character index and a byte index
+   * diverge as soon as any non-ASCII content appears. Mixing the two units
+   * caused the offset to run ahead of the real file position and slice
+   * subsequent reads mid-line, dropping or corrupting log lines.
+   *
+   * To stay consistent we read the file as a raw Buffer, slice it by byte
+   * offset, and locate line boundaries by scanning for the newline byte
+   * (0x0A). Every advance is measured in bytes, matching the emitted offset.
+   */
   private async readNewLines(
     sessionPath: string,
     onLine: (line: string, offset: number) => void
@@ -128,20 +142,27 @@ export class FileWatcher {
     const currentOffset = this.offsets.get(sessionPath) ?? 0;
 
     try {
-      const content = await readFile(sessionPath, "utf-8");
-      const newContent = content.slice(currentOffset);
+      const buffer = await readFile(sessionPath); // Buffer (no encoding)
 
-      if (newContent.length === 0) return;
+      // Nothing new (also guards against truncation/rotation resetting size).
+      if (currentOffset >= buffer.length) return;
 
-      const lines = newContent.split("\n").filter((l) => l.trim().length > 0);
-      let offset = currentOffset;
+      // Emit only complete, newline-terminated lines. A trailing partial line
+      // (a log entry still being written) is left in place and picked up on
+      // the next read once its newline arrives. All offsets are byte offsets.
+      let lineStart = currentOffset;
+      let newlineIndex = buffer.indexOf(0x0a, lineStart);
 
-      for (const line of lines) {
-        onLine(line, offset);
-        offset += Buffer.byteLength(line, "utf-8") + 1; // +1 for newline
+      while (newlineIndex !== -1) {
+        const line = buffer.toString("utf-8", lineStart, newlineIndex);
+        if (line.trim().length > 0) {
+          onLine(line, lineStart);
+        }
+        lineStart = newlineIndex + 1; // advance past the newline byte
+        newlineIndex = buffer.indexOf(0x0a, lineStart);
       }
 
-      this.offsets.set(sessionPath, offset);
+      this.offsets.set(sessionPath, lineStart);
     } catch {
       // File may have been deleted/moved
     }
