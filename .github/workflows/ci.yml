@@ -25,5 +25,11 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Build package
+        run: |
+          npm run build
+          test -f dist/index.js
+          test -f dist/index.d.ts
+
       - name: Run tests
         run: npm test
