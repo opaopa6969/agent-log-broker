@@ -89,7 +89,7 @@ volta catalog にはサービスとして登録済み（port 3100, wsl 環境）
 | `tramli` | depends_on | ConsumerState ライフサイクル管理（FlowDefinition / FlowEngine / InMemoryFlowStore） | yes | tramli は library として volta catalog に登録済み。MCP バックエンド未所持。`ConsumerRegistry` が直接 import して使用。 |
 | `claude-session-replay` | provides_to | BrokerEvent の full_stream 配信（コンシューマとして受信） | no | volta catalog にサービス登録済み（docker で稼働）。ブローカーの HTTP API が未実装のため未接続。Phase 1 完了後に接続予定。 |
 | `AskOS` | provides_to | BrokerEvent の filtered 配信（コンシューマとして受信） | no | volta catalog にサービス登録済み（systemd で稼働）。ブローカーの HTTP API が未実装のため未接続。 |
-| `issue-broker` | depends_on | issue-broker MCP server（.mcp.json で stdio クライアントとして設定済み） | yes | `.mcp.json` に issue-broker を stdio で登録済み。開発時の issue 管理に使用。agent-log-broker 自体の MCP 化とは無関係だが、issue-hub 協調で Phase 2 が使う可能性あり。 |
+| `issue-broker` | depends_on | issue-broker MCP server（任意のローカル開発用 stdio クライアント） | no | 必要な開発者は `.mcp.json.example` を `.mcp.json` にコピーし、ローカルの絶対パスを設定する。`.mcp.json` は個人環境固有のため追跡しない。agent-log-broker 自体の MCP 化とは無関係。 |
 
 ---
 
