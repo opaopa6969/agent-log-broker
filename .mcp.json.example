@@ -3,7 +3,7 @@
     "issue-broker": {
       "command": "node",
       "args": [
-        "/home/opa/work/tools-workspace/issue-broker/index.js"
+        "/absolute/path/to/issue-broker/index.js"
       ],
       "env": {
         "GITHUB_OWNER": "opaopa6969",
