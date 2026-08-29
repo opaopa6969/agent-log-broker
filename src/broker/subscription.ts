@@ -171,8 +171,7 @@ export class SubscriptionManager {
 
     if (
       filter.includeRoles &&
-      event.message &&
-      !filter.includeRoles.includes(event.message.role)
+      (!event.message || !filter.includeRoles.includes(event.message.role))
     ) {
       return false;
     }

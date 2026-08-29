@@ -200,4 +200,82 @@ describe("SubscriptionManager", () => {
       expect(manager.matches(event, sub)).toBe(false);
     });
   });
+
+  // ── matches: filtered includeRoles ──
+
+  describe("matches() for filtered includeRoles", () => {
+    it("returns true when event message role is in filter includeRoles", () => {
+      const sub = makeSubscription({
+        mode: "filtered",
+        filter: { includeRoles: ["assistant"] },
+      });
+      const event = makeEvent();
+      event.message = {
+        role: "assistant",
+        text: "Hi",
+        timestamp: new Date().toISOString(),
+      };
+      expect(manager.matches(event, sub)).toBe(true);
+    });
+
+    it("returns false when event message role is NOT in filter includeRoles", () => {
+      const sub = makeSubscription({
+        mode: "filtered",
+        filter: { includeRoles: ["assistant"] },
+      });
+      const event = makeEvent();
+      event.message = {
+        role: "user",
+        text: "Hi",
+        timestamp: new Date().toISOString(),
+      };
+      expect(manager.matches(event, sub)).toBe(false);
+    });
+
+    it("returns false when includeRoles is set but event has no message (session.discovered)", () => {
+      const sub = makeSubscription({
+        mode: "filtered",
+        filter: { includeRoles: ["assistant"] },
+      });
+      const event: BrokerEvent = {
+        _broker: {
+          version: "1.0",
+          messageId: "msg-1",
+          deliveredAt: new Date().toISOString(),
+          deliveryAttempt: 1,
+        },
+        _session: {
+          sessionId: "session-1",
+          sessionPath: "/sessions/session-1",
+          projectPath: "/projects/my-project",
+          agentType: "claude",
+        },
+        type: "session.discovered",
+      };
+      expect(manager.matches(event, sub)).toBe(false);
+    });
+
+    it("returns false when includeRoles is set but event has no message (session.idle)", () => {
+      const sub = makeSubscription({
+        mode: "filtered",
+        filter: { includeRoles: ["user"] },
+      });
+      const event: BrokerEvent = {
+        _broker: {
+          version: "1.0",
+          messageId: "msg-1",
+          deliveredAt: new Date().toISOString(),
+          deliveryAttempt: 1,
+        },
+        _session: {
+          sessionId: "session-1",
+          sessionPath: "/sessions/session-1",
+          projectPath: "/projects/my-project",
+          agentType: "claude",
+        },
+        type: "session.idle",
+      };
+      expect(manager.matches(event, sub)).toBe(false);
+    });
+  });
 });
