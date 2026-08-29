@@ -144,13 +144,23 @@ export class FileWatcher {
     try {
       const buffer = await readFile(sessionPath); // Buffer (no encoding)
 
-      // Nothing new (also guards against truncation/rotation resetting size).
-      if (currentOffset >= buffer.length) return;
+      // Truncation / rotation detection: if the file shrank below our last
+      // read position, the file was truncated (or replaced with a shorter
+      // one). Reset to 0 and re-read from the start so new content written
+      // after truncation is not silently lost.
+      let lineStart: number;
+      if (buffer.length < currentOffset) {
+        lineStart = 0;
+      } else if (currentOffset >= buffer.length) {
+        // Nothing new — same size as last read, no new content.
+        return;
+      } else {
+        lineStart = currentOffset;
+      }
 
       // Emit only complete, newline-terminated lines. A trailing partial line
       // (a log entry still being written) is left in place and picked up on
       // the next read once its newline arrives. All offsets are byte offsets.
-      let lineStart = currentOffset;
       let newlineIndex = buffer.indexOf(0x0a, lineStart);
 
       while (newlineIndex !== -1) {
