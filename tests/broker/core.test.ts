@@ -128,6 +128,28 @@ describe("BrokerCore", () => {
         });
       }
     });
+
+    // Regression-prone edge case: results is a Map keyed by consumer.id, so
+    // duplicate IDs collide. Pin the current behavior (last-writer-wins, only
+    // one entry in the Map) so a silent change in the dedup semantics is
+    // caught.
+    it("collapses duplicate consumer IDs to a single Map entry", async () => {
+      const core = new BrokerCore();
+      const consumers = [
+        makeConsumer({ id: "dup" }),
+        makeConsumer({ id: "dup" }),
+      ];
+      const result = await core.distribute(makeEvent(), consumers);
+      // Two deliveries happen but the Map only keeps one entry per id.
+      expect(result.size).toBe(1);
+      expect(result.has("dup")).toBe(true);
+      expect(result.get("dup")).toEqual({
+        consumerId: "dup",
+        success: true,
+        attempt: 1,
+        deliveredAt: expect.any(String),
+      });
+    });
   });
 
   describe("deliverToConsumer() stub return value", () => {

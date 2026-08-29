@@ -59,6 +59,37 @@ describe("RedactionPipeline", () => {
       expect(piiFlags.length).toBeGreaterThan(0);
       expect(piiFlags[0].severity).toBe("medium");
     });
+
+    it("redacts multiple distinct PII types in a single text and aggregates counts + flags", () => {
+      const pipeline = new RedactionPipeline("minimal");
+      const text =
+        "Email user@example.com, phone 555-867-5309, ssn 123-45-6789.";
+      const result = pipeline.process(text);
+      // Three distinct PII patterns, each matched once.
+      expect(result.redactionCount).toBe(3);
+      expect(result.redactedText).toBe(
+        "Email [REDACTED:EMAIL], phone [REDACTED:PHONE], ssn [REDACTED:SSN]."
+      );
+      // One flag per PII pattern type that fired.
+      const piiFlags = result.securityFlags.filter(
+        (f) => f.type === "pii_detected"
+      );
+      expect(piiFlags).toHaveLength(3);
+      const names = piiFlags.map((f) => f.detail).sort();
+      expect(names).toEqual([
+        "email pattern detected (1 occurrences)",
+        "phone pattern detected (1 occurrences)",
+        "ssn pattern detected (1 occurrences)",
+      ]);
+    });
+
+    it("handles empty string input (boundary)", () => {
+      const pipeline = new RedactionPipeline("standard");
+      const result = pipeline.process("");
+      expect(result.redactedText).toBe("");
+      expect(result.redactionCount).toBe(0);
+      expect(result.securityFlags).toHaveLength(0);
+    });
   });
 
   describe("credential redaction (standard level)", () => {

@@ -278,4 +278,102 @@ describe("SubscriptionManager", () => {
       expect(manager.matches(event, sub)).toBe(false);
     });
   });
+
+  // ── matches: trigger (stub) ──
+  // `matchesTrigger()` is a documented stub (Phase 2 work) that always
+  // returns false. Pin this behavior so a future implementation does not
+  // silently start firing on events that used to be suppressed.
+
+  describe("matches() for trigger subscriptions", () => {
+    it("returns false for a trigger subscription with not_empty condition", () => {
+      const sub = makeSubscription({
+        mode: "trigger",
+        trigger: {
+          conditions: [{ field: "securityFlags", op: "not_empty" }],
+        },
+      });
+      const event = makeEvent();
+      event.securityFlags = [{ type: "dangerous_command" }];
+      expect(manager.matches(event, sub)).toBe(false);
+    });
+
+    it("returns false even when the event would seem to satisfy the condition", () => {
+      const sub = makeSubscription({
+        mode: "trigger",
+        trigger: {
+          conditions: [
+            { field: "securityFlags", op: "not_empty" },
+            { field: "text", op: "equals", value: "danger" },
+          ],
+          conditionLogic: "and",
+        },
+      });
+      const event = makeEvent();
+      event.message = {
+        role: "user",
+        text: "danger",
+        timestamp: new Date().toISOString(),
+      };
+      event.securityFlags = [{ type: "dangerous_command" }];
+      expect(manager.matches(event, sub)).toBe(false);
+    });
+
+    it("returns false for a trigger subscription with no trigger config", () => {
+      const sub = makeSubscription({ mode: "trigger", trigger: undefined });
+      const event = makeEvent();
+      expect(manager.matches(event, sub)).toBe(false);
+    });
+
+    it("returns false regardless of throttle / cooldown / format settings", () => {
+      const sub = makeSubscription({
+        mode: "trigger",
+        trigger: {
+          conditions: [{ field: "securityFlags", op: "not_empty" }],
+          throttleSeconds: 300,
+          cooldownPerSession: true,
+          format: "slack",
+        },
+      });
+      const event = makeEvent();
+      event.securityFlags = [{ type: "dangerous_command" }];
+      expect(manager.matches(event, sub)).toBe(false);
+    });
+  });
+
+  // ── matches: full_stream ignores filter/trigger config ──
+  // full_stream short-circuits to true before consulting filter or trigger.
+  // A consumer that accidentally attaches a filter or trigger to a
+  // full_stream subscription must still receive all events.
+
+  describe("matches() for full_stream ignores attached filter/trigger", () => {
+    it("returns true when a filter that would reject the event is attached", () => {
+      const sub = makeSubscription({
+        mode: "full_stream",
+        filter: { projectPath: "/projects/other-project" },
+      });
+      const event = makeEvent({ projectPath: "/projects/my-project" });
+      expect(manager.matches(event, sub)).toBe(true);
+    });
+
+    it("returns true when a trigger config is attached", () => {
+      const sub = makeSubscription({
+        mode: "full_stream",
+        trigger: {
+          conditions: [{ field: "securityFlags", op: "not_empty" }],
+        },
+      });
+      const event = makeEvent();
+      expect(manager.matches(event, sub)).toBe(true);
+    });
+
+    it("returns true when both filter and trigger are attached", () => {
+      const sub = makeSubscription({
+        mode: "full_stream",
+        filter: { agentTypes: ["gpt"] },
+        trigger: { conditions: [{ field: "x", op: "exists_where" }] },
+      });
+      const event = makeEvent({ agentType: "claude" });
+      expect(manager.matches(event, sub)).toBe(true);
+    });
+  });
 });
