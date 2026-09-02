@@ -1,11 +1,17 @@
 #!/usr/bin/env node
 
-const fs = require('fs');
-const path = require('path');
+import fs from 'node:fs';
+import path from 'node:path';
 
 const VERSION = '1.0.0';
 const command = process.argv[2];
 const arg = process.argv[3];
+const CWD = process.cwd();
+
+function isWithinDirectory(file, directory) {
+  const relative = path.relative(directory, path.resolve(directory, file));
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
 
 function findFlowsDir() {
   // Look for dge/flows/ from current directory
@@ -23,14 +29,20 @@ function cmdSave() {
     process.exit(1);
   }
 
-  const dir = path.dirname(file);
+  if (!isWithinDirectory(file, CWD)) {
+    console.error('ERROR: file path must stay within the project directory');
+    process.exit(1);
+  }
+
+  const resolvedFile = path.resolve(CWD, file);
+  const dir = path.dirname(resolvedFile);
   fs.mkdirSync(dir, { recursive: true });
 
   let content = '';
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', chunk => { content += chunk; });
   process.stdin.on('end', () => {
-    fs.writeFileSync(file, content);
+    fs.writeFileSync(resolvedFile, content);
     const bytes = Buffer.byteLength(content);
     console.log(`SAVED: ${file} (${bytes} bytes)`);
   });
@@ -38,6 +50,10 @@ function cmdSave() {
 
 function cmdPrompt() {
   const flow = arg || 'quick';
+  if (!/^[a-zA-Z0-9_-]+$/.test(flow)) {
+    console.error('ERROR: invalid flow name');
+    process.exit(1);
+  }
   const flowsDir = findFlowsDir();
   const yamlFile = flowsDir ? path.join(flowsDir, `${flow}.yaml`) : null;
 
