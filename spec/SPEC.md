@@ -1183,8 +1183,7 @@ private async deliverToConsumer(
 **Vitest** (`^2.0.0`) を使用する。
 
 ```bash
-npm test           # vitest (watch なし)
-npm run test:watch # vitest --watch
+npm test # vitest（対話端末では watch、CI では単発実行）
 ```
 
 ### 11.2 テストディレクトリ構造

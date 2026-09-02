@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtemp, writeFile, appendFile, rm, mkdir } from "node:fs/promises";
+import { mkdtemp, writeFile, appendFile, rm, mkdir, truncate } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -164,6 +164,57 @@ describe("FileWatcher.readNewLines byte-offset tracking", () => {
     const seen2: string[] = [];
     await read(logPath, (line) => seen2.push(line));
     expect(seen2).toEqual([c]);
+  });
+
+  it("reads new content after file truncation (offset resets to 0)", async () => {
+    const read = readNewLines(watcher);
+
+    // 1. Write two lines and read them.
+    const batch1 = [
+      JSON.stringify({ a: 1 }),
+      JSON.stringify({ b: 2 }),
+    ];
+    await writeFile(
+      logPath,
+      batch1.map((o) => o).join("\n") + "\n",
+      "utf-8"
+    );
+
+    const seen1: string[] = [];
+    await read(logPath, (line) => seen1.push(line));
+    expect(seen1).toEqual(batch1);
+
+    // 2. Truncate the file to 0 bytes, then write new content.
+    await truncate(logPath, 0);
+    const newLine = JSON.stringify({ c: 3 });
+    await writeFile(logPath, newLine + "\n", "utf-8");
+
+    // 3. Re-read — should get the new content (not an empty array).
+    const seen2: string[] = [];
+    await read(logPath, (line) => seen2.push(line));
+    expect(seen2).toEqual([newLine]);
+  });
+
+  it("reads new content after truncation with multibyte (Japanese) lines", async () => {
+    const read = readNewLines(watcher);
+
+    // Initial content with Japanese text (longer than post-truncation content).
+    const initial = JSON.stringify({ msg: "初期状態の長いログメッセージ" });
+    await writeFile(logPath, initial + "\n", "utf-8");
+
+    const seen1: string[] = [];
+    await read(logPath, (line) => seen1.push(line));
+    expect(seen1).toEqual([initial]);
+
+    // Truncate and write shorter Japanese content. The file is now smaller
+    // than the previous offset, so truncation is detected and offset resets.
+    await truncate(logPath, 0);
+    const after = JSON.stringify({ msg: "新ログ" });
+    await writeFile(logPath, after + "\n", "utf-8");
+
+    const seen2: string[] = [];
+    await read(logPath, (line) => seen2.push(line));
+    expect(seen2).toEqual([after]);
   });
 
   it("reports a watched file that was deleted before it can be read", async () => {

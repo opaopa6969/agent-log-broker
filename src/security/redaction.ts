@@ -65,15 +65,21 @@ const CREDENTIAL_PATTERNS: Array<{ name: string; pattern: RegExp; replacement: s
   },
 ];
 
-const DANGEROUS_COMMANDS = [
-  "rm -rf",
-  "chmod 777",
-  "curl | bash",
-  "wget | sh",
-  ".env",
-  "id_rsa",
-  "/etc/shadow",
-  "/etc/passwd",
+const DANGEROUS_COMMANDS: Array<{ pattern: RegExp; label: string; severity: "critical" | "high" }> = [
+  { pattern: /rm -rf/, label: "rm -rf", severity: "critical" },
+  { pattern: /chmod 777/, label: "chmod 777", severity: "high" },
+  { pattern: /curl\s*\|\s*(bash|sh)/, label: "curl | bash", severity: "high" },
+  { pattern: /wget\s*\|\s*sh/, label: "wget | sh", severity: "high" },
+  // `.env` file reference: match ".env" followed by end-of-token (whitespace,
+  // quote, end-of-string, or punctuation), so ".environment" / ".envrc" do not
+  // trigger a false positive.
+  { pattern: /\.env\b/, label: ".env", severity: "high" },
+  // `id_rsa` private key reference: negative lookahead `(?!\.pub)` skips the
+  // public key variant `id_rsa.pub` (which is not a secret). A standalone
+  // `id_rsa` token (e.g. `~/.ssh/id_rsa`) is still flagged.
+  { pattern: /\bid_rsa\b(?!\.pub)/, label: "id_rsa", severity: "high" },
+  { pattern: /\/etc\/shadow\b/, label: "/etc/shadow", severity: "high" },
+  { pattern: /\/etc\/passwd\b/, label: "/etc/passwd", severity: "high" },
 ];
 
 export class RedactionPipeline {
@@ -135,12 +141,12 @@ export class RedactionPipeline {
     }
 
     // Security flagging (all levels, does not redact)
-    for (const cmd of DANGEROUS_COMMANDS) {
-      if (text.includes(cmd)) {
+    for (const { pattern, label, severity } of DANGEROUS_COMMANDS) {
+      if (pattern.test(text)) {
         securityFlags.push({
           type: "dangerous_command",
-          severity: cmd === "rm -rf" ? "critical" : "high",
-          detail: `Dangerous pattern detected: ${cmd}`,
+          severity,
+          detail: `Dangerous pattern detected: ${label}`,
           field: "text",
         });
       }
