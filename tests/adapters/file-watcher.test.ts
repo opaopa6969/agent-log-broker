@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtemp, writeFile, appendFile, rm, mkdir, truncate } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -216,6 +216,21 @@ describe("FileWatcher.readNewLines byte-offset tracking", () => {
     await read(logPath, (line) => seen2.push(line));
     expect(seen2).toEqual([after]);
   });
+
+  it("reports a watched file that was deleted before it can be read", async () => {
+    const read = readNewLines(watcher);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await writeFile(logPath, "{}\n", "utf-8");
+    await rm(logPath);
+
+    await expect(read(logPath, () => {})).resolves.toBeUndefined();
+
+    expect(warn).toHaveBeenCalledWith(
+      `[FileWatcher] Failed to read watched file: ${logPath}`,
+      expect.anything()
+    );
+    warn.mockRestore();
+  });
 });
 
 /**
@@ -243,11 +258,18 @@ describe("FileWatcher.discoverSessions / watch / close", () => {
 
   describe("discoverSessions()", () => {
     it("returns an empty array when basePath does not exist", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const missingBasePath = join(baseDir, "does-not-exist");
       const w = new FileWatcher({
-        basePath: join(baseDir, "does-not-exist"),
+        basePath: missingBasePath,
       });
       const sessions = await w.discoverSessions();
       expect(sessions).toEqual([]);
+      expect(warn).toHaveBeenCalledWith(
+        `[FileWatcher] Failed to scan base path: ${missingBasePath}`,
+        expect.anything()
+      );
+      warn.mockRestore();
     });
 
     it("returns an empty array when basePath is empty", async () => {
@@ -277,6 +299,7 @@ describe("FileWatcher.discoverSessions / watch / close", () => {
     });
 
     it("skips session directories that have no log.jsonl", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
       const hash = "project-hash-1";
       const withLog = "session-with-log";
       const withoutLog = "session-without-log";
@@ -297,9 +320,21 @@ describe("FileWatcher.discoverSessions / watch / close", () => {
 
       expect(sessions).toHaveLength(1);
       expect(sessions[0].sessionId).toBe(withLog);
+      expect(warn).toHaveBeenCalledWith(
+        `[FileWatcher] Failed to inspect log file: ${join(
+          baseDir,
+          hash,
+          "sessions",
+          withoutLog,
+          "log.jsonl"
+        )}`,
+        expect.anything()
+      );
+      warn.mockRestore();
     });
 
     it("skips project hashes that have no sessions directory", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
       const hashWith = "has-sessions";
       const hashWithout = "no-sessions";
       await mkdir(join(baseDir, hashWith, "sessions", "s1"), {
@@ -317,6 +352,15 @@ describe("FileWatcher.discoverSessions / watch / close", () => {
 
       expect(sessions).toHaveLength(1);
       expect(sessions[0].sessionId).toBe("s1");
+      expect(warn).toHaveBeenCalledWith(
+        `[FileWatcher] Failed to scan sessions directory: ${join(
+          baseDir,
+          hashWithout,
+          "sessions"
+        )}`,
+        expect.anything()
+      );
+      warn.mockRestore();
     });
 
     it("discovers multiple sessions across multiple project hashes", async () => {

@@ -8,3 +8,4 @@ dist/
 .next/
 .nuxt/
 bower_components/
+.mcp.json

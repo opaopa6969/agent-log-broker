@@ -66,16 +66,25 @@ export class FileWatcher {
                 projectPath: hash, // Resolved via symlink in real impl
                 agentType: "claude",
               });
-            } catch {
-              // log.jsonl doesn't exist, skip
+            } catch (error) {
+              console.warn(
+                `[FileWatcher] Failed to inspect log file: ${logPath}`,
+                error
+              );
             }
           }
-        } catch {
-          // No sessions dir, skip
+        } catch (error) {
+          console.warn(
+            `[FileWatcher] Failed to scan sessions directory: ${sessionsDir}`,
+            error
+          );
         }
       }
-    } catch {
-      // Base path doesn't exist yet
+    } catch (error) {
+      console.warn(
+        `[FileWatcher] Failed to scan base path: ${this.basePath}`,
+        error
+      );
     }
 
     return sessions;
@@ -173,8 +182,11 @@ export class FileWatcher {
       }
 
       this.offsets.set(sessionPath, lineStart);
-    } catch {
-      // File may have been deleted/moved
+    } catch (error) {
+      console.warn(
+        `[FileWatcher] Failed to read watched file: ${sessionPath}`,
+        error
+      );
     }
   }
 }

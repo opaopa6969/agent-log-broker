@@ -157,9 +157,9 @@
     {
       "repo": "issue-broker",
       "direction": "depends_on",
-      "capability": "issue-broker MCP server（.mcp.json で stdio クライアントとして設定済み）",
-      "exists_now": true,
-      "note": ".mcp.json に issue-broker を stdio で登録済み。開発時の issue 管理に使用。agent-log-broker 自体の MCP 化とは無関係だが、issue-hub 協調で Phase 2 が使う可能性あり。"
+      "capability": "issue-broker MCP server（任意のローカル開発用 stdio クライアント）",
+      "exists_now": false,
+      "note": "必要な開発者は .mcp.json.example を .mcp.json にコピーし、ローカルの絶対パスを設定する。.mcp.json は個人環境固有のため追跡しない。agent-log-broker 自体の MCP 化とは無関係。"
     }
   ],
   "library_serve": {
